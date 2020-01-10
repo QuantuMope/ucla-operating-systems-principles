@@ -9,7 +9,7 @@
 
 void handle_sigsegv()
 {
-    fprintf(stderr, "Segfault caught mang.\n");
+    fprintf(stderr, "Segfault caught mang mang.\n");
     exit(4);
 }
 
@@ -103,20 +103,29 @@ int main(int argc, char** argv)
         free(output_filename);
     }
     // 2. Register signal handler
-    if (flags[2])
+    if (flags[3])
+        // use if statement to check signal worked
         signal(SIGSEGV, handle_sigsegv);
 
     // 3. Cause segfault
-    if (flags[3]) {
+    if (flags[2]) {
         char* seg_fault_force = NULL;
         *seg_fault_force = 'x';
     }
 
     // 4. If no segfault, copy stdin to stdout
-    char i;
-    while ((i = getchar()) != EOF) {
-        putchar(i);
+
+    // FIX NO ARGUMENT BUG
+    int err;
+    char buf[1];
+    while ((err = read(0, &buf, 1)) != 0) {
+        if (err == -1)  // if read fails
+            exit(1);
+        write(1, &buf, 1);
     }
+//    while ((i = getchar()) != EOF) {
+//        putchar(i);
+//    }
 
     exit(0);
 }
