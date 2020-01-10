@@ -1,0 +1,16 @@
+NAME : Andrew Choi
+EMAIL: asjchoi@ucla.edu
+ID   : 205348339
+
+Included Files:
+lab0.c -
+Makefile
+README -
+
+Smoke-test Cases:
+
+
+Other Information:
+https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html
+
+https://www.geeksforgeeks.org/signals-c-language/
