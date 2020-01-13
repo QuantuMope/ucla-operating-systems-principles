@@ -1,16 +1,38 @@
-NAME : Andrew Choi
+NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
-ID   : 205348339
+ID: 205348339
 
-Included Files:
-lab0.c -
-Makefile
-README -
+lab0: Program copies contents of standard input to standard output.
+Supports file redirection
 
-Smoke-test Cases:
+Included files:
+lab0.c         - C source module
+Makefile       - makefile to build program and tarball
+README         - description of included files and smoke-test cases
+backtrace.png  - screen shot of program segfault
+breakpoint.png - screen
 
+Smoke-test cases:
+I used twelve cases to test the lab0 executable which makes sure
+that the expected return code was received for a set of arguments.
+The cases with a brief description for each are listed below.
+
+Case 1: Pass an input file argument that does not exist.
+Expected return code 2.
+Case 2: Use the segfault argument and the catch argument in that order.
+Expected return code of 4.
+Case 3: Same as case 2 but use the catch argument first.
+Expected return code of 4.
+Case 4: Enter an invalid argument.
+Expected return code of 1.
+Case 5: Enter valid arguments with an invalid argument at the end.
+Expected return code of 1.
+Case 6: Enter valid arguments with an invalid argument in the middle.
+Expected return code of 1.
 
 Other Information:
 https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html
 
 https://www.geeksforgeeks.org/signals-c-language/
+
+https://unix.stackexchange.com/questions/80629/redirect-both-stderr-and-stdout-to-dev-null-with-bin-sh

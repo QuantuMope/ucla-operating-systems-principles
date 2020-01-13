@@ -1,3 +1,7 @@
+// NAME: Andrew Choi
+// EMAIL: asjchoi@ucla.edu
+// ID: 205348339
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
@@ -9,8 +13,14 @@
 
 void handle_sigsegv()
 {
-    fprintf(stderr, "Segfault caught mang mang.\n");
+    fprintf(stderr, "Caught and received SIGSEGV.\n");
     exit(4);
+}
+
+void cause_segfault()
+{
+    char* seg_fault_force = NULL;
+    *seg_fault_force = 'x';
 }
 
 int main(int argc, char** argv)
@@ -37,7 +47,7 @@ int main(int argc, char** argv)
 
         if (c == '?') {
             fprintf(stderr, "Valid arguments are: "
-                            "--input=FILENAME, --output=FILENAME, "
+                            "--input=filename, --output=filename, "
                             "--segfault, --catch\n");
             exit(1);
         }
@@ -72,7 +82,15 @@ int main(int argc, char** argv)
             flags[3] = 1;
             continue;
         }
+
     }
+
+    // Check for any other unwanted command line arguments
+    if (optind < argc) {
+        fprintf(stderr, "Unrecognized command line argument: %s\n", argv[optind++]);
+        exit(1);
+    }
+
     // 1. File redirection
     // Input file redirection
     if (flags[0]) {
@@ -83,7 +101,7 @@ int main(int argc, char** argv)
             dup(ifd);
             close(ifd);
         } else {
-            fprintf(stderr, "Unable to open file: %s\n", strerror(errno));
+            fprintf(stderr, "--input failed to open %s: %s\n", input_filename, strerror(errno));
             exit(2);
         }
         free(input_filename);
@@ -97,35 +115,29 @@ int main(int argc, char** argv)
             dup(ofd);
             close(ofd);
         } else {
-            fprintf(stderr, "Unable to create file: %s\n", strerror(errno));
+            fprintf(stderr, "--output failed to create/write to file %s: %s\n", output_filename, strerror(errno));
             exit(3);
         }
         free(output_filename);
     }
     // 2. Register signal handler
-    if (flags[3])
-        // use if statement to check signal worked
-        signal(SIGSEGV, handle_sigsegv);
-
-    // 3. Cause segfault
-    if (flags[2]) {
-        char* seg_fault_force = NULL;
-        *seg_fault_force = 'x';
+    if (flags[3]) {
+        if (signal(SIGSEGV, handle_sigsegv) == SIG_ERR)
+            fprintf(stderr, "--catch failed: %s\n", strerror(errno));
     }
 
-    // 4. If no segfault, copy stdin to stdout
+    // 3. Cause segfault
+    if (flags[2])
+        cause_segfault();
 
-    // FIX NO ARGUMENT BUG
+    // 4. Copy stdin to stdout if no segfault
     int err;
     char buf[1];
     while ((err = read(0, &buf, 1)) != 0) {
-        if (err == -1)  // if read fails
-            exit(1);
+        if (err == -1)
+            fprintf(stderr, "Reading from stdin failed: %s\n", strerror(errno));
         write(1, &buf, 1);
     }
-//    while ((i = getchar()) != EOF) {
-//        putchar(i);
-//    }
 
     exit(0);
 }
