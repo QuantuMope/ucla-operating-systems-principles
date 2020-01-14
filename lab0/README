@@ -3,19 +3,21 @@ EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
 lab0: Program copies contents of standard input to standard output.
-Supports file redirection
+      Supports file redirection.
 
 Included files:
 lab0.c         - C source module
 Makefile       - makefile to build program and tarball
 README         - description of included files and smoke-test cases
-backtrace.png  - screen shot of program segfault
-breakpoint.png - screen
+backtrace.png  - screen shot of program segfault with stack backtrace
+breakpoint.png - screen shot of breakpoint and null pointer inspection
 
 Smoke-test cases:
 I used twelve cases to test the lab0 executable which makes sure
 that the expected return code was received for a set of arguments.
-The cases with a brief description for each are listed below.
+When running make check, it will output which cases were passed
+and which were failed. The cases with a brief description for each
+are listed below.
 
 Case 1: Pass an input file argument that does not exist.
 Expected return code 2.
@@ -29,10 +31,22 @@ Case 5: Enter valid arguments with an invalid argument at the end.
 Expected return code of 1.
 Case 6: Enter valid arguments with an invalid argument in the middle.
 Expected return code of 1.
+Case 7: Enter valid arguments with an invalid argument in the middle (2).
+Expected return code of 1.
+Case 8: Enter a short argument.
+Expected return code of 1.
+Case 9: No argument to input.
+Expected return code of 1.
+Case 10: No argument to output.
+Expected return code of 1.
+Case 11: Program terminates successfully.
+Expected return code of 0.
+Case 12: Open a file with improper permission.
+Expected return code of 3.
 
-Other Information:
+References:
+Used the following example to better understand getopt_long()
 https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html
 
-https://www.geeksforgeeks.org/signals-c-language/
-
+Used the following example to suppress stdout and stderr for smoke test.
 https://unix.stackexchange.com/questions/80629/redirect-both-stderr-and-stdout-to-dev-null-with-bin-sh

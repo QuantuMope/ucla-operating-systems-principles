@@ -46,7 +46,7 @@ int main(int argc, char** argv)
         c = getopt_long(argc, argv, "", long_options, &option_index);
 
         if (c == '?') {
-            fprintf(stderr, "Valid arguments are: "
+            fprintf(stderr, "Invalid argument. Valid arguments are: "
                             "--input=filename, --output=filename, "
                             "--segfault, --catch\n");
             exit(1);
@@ -82,7 +82,6 @@ int main(int argc, char** argv)
             flags[3] = 1;
             continue;
         }
-
     }
 
     // Check for any other unwanted command line arguments
@@ -104,7 +103,6 @@ int main(int argc, char** argv)
             fprintf(stderr, "--input failed to open %s: %s\n", input_filename, strerror(errno));
             exit(2);
         }
-        free(input_filename);
     }
 
     // Output file redirection
@@ -134,10 +132,13 @@ int main(int argc, char** argv)
     int err;
     char buf[1];
     while ((err = read(0, &buf, 1)) != 0) {
-        if (err == -1)
-            fprintf(stderr, "Reading from stdin failed: %s\n", strerror(errno));
+        if (err == -1) {
+            fprintf(stderr, "Reading from %s failed: %s\n", input_filename, strerror(errno));
+            exit(2);
+        }
         write(1, &buf, 1);
     }
+    free(input_filename);
 
     exit(0);
 }
