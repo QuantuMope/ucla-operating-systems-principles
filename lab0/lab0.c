@@ -34,53 +34,41 @@ int main(int argc, char** argv)
     int flags[4] = {0};  // argument flags
 
     static struct option long_options[] = {
-            {"input",    required_argument, 0, 0},
-            {"output",   required_argument, 0, 0},
-            {"segfault", no_argument,       0, 0},
-            {"catch",    no_argument,       0, 0},
+            {"input",    required_argument, 0, 'i'},
+            {"output",   required_argument, 0, 'o'},
+            {"segfault", no_argument,       0, 's'},
+            {"catch",    no_argument,       0, 'c'},
             {0, 0, 0, 0}
     };
 
-    while (1) {
+    while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
 
-        c = getopt_long(argc, argv, "", long_options, &option_index);
-
-        if (c == '?') {
-            fprintf(stderr, "Invalid argument. Valid arguments are: "
-                            "--input=filename, --output=filename, "
-                            "--segfault, --catch\n");
-            exit(1);
-        }
-
-        if (c == -1)
-            break;
-
-        // Input option with filename argument: --input=filename
-        if (!strcmp(long_options[option_index].name, "input")) {
-            flags[0] = 1;
-            input_filename = (char*)malloc(strlen(optarg)*sizeof(char));
-            strcpy(input_filename, optarg);
-            continue;
-        }
-
-        // Output option with filename argument: --output=filename
-        if (!strcmp(long_options[option_index].name, "output")) {
-            flags[1] = 1;
-            output_filename = (char*)malloc(strlen(optarg)*sizeof(char));
-            strcpy(output_filename, optarg);
-            continue;
-        }
-
-        // Segfault option: --segfault
-        if (!strcmp(long_options[option_index].name, "segfault")) {
-            flags[2] = 1;
-            continue;
-        }
-
-        // Catch option: --catch
-        if (!strcmp(long_options[option_index].name, "catch")) {
-            flags[3] = 1;
-            continue;
+        switch(c) {
+            case '?':
+                fprintf(stderr, "Invalid argument. Valid arguments are: "
+                                "--input=filename, --output=filename, "
+                                "--segfault, --catch\n");
+                exit(1);
+            case 'i':
+                // Input option with filename argument: --input=filename
+                flags[0] = 1;
+                input_filename = (char*)malloc(strlen(optarg)*sizeof(char));
+                strcpy(input_filename, optarg);
+                break;
+            case 'o':
+                // Output option with filename argument: --output=filename
+                flags[1] = 1;
+                output_filename = (char*)malloc(strlen(optarg)*sizeof(char));
+                strcpy(output_filename, optarg);
+                break;
+            case 's':
+                // Segfault option: --segfault
+                flags[2] = 1;
+                break;
+            case 'c':
+                // Catch option: --catch
+                flags[3] = 1;
+                break;
         }
     }
 
