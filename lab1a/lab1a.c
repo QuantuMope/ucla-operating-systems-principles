@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
     int pfd1[2];  // read 3, write 4
     int pfd2[2];  // read 5, write 6
     pid_t pid;
+    char* exec_arg[] = {NULL};
     if (shell_option) {
         pipe(pfd1);
         pipe(pfd2);
@@ -86,7 +87,7 @@ int main(int argc, char** argv) {
             dup(pfd2[1]); // make fd 6 (write) new stderr
             close(pfd2[1]);
 
-            if (execv("/bin/bash", NULL) < 0) {
+            if (execv("/bin/bash", exec_arg) < 0) {
                 fprintf(stderr, "Failed to execute shell.\n");
                 exit(1);
             }
@@ -114,100 +115,107 @@ int main(int argc, char** argv) {
     char buf[255];
     char cr_lf[] = "\r\n";
     char lf[] = "\n";
-    while (1) {
-        if ((ret = poll(poll_list, 2, 0)) < 0) {
-            fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
-            exit(1);
-        }
-
-        if (poll_list[0].revents & POLLIN) {
-            if ((count = read(ifd, &buf, 255)) != 0) {
-                if (count == -1) {
-                    fprintf(stderr, "Reading from stdin failed: %s\n",
-                            strerror(errno));
-                    exit(1);
-                }
-                if (buf[0] == '\003') {
-                    if (kill(pid, SIGINT) < 0) {
-                        fprintf(stderr, "Failed to kill shell process: %s\n",
-                                strerror(errno));
-                    }
-                }
-                if (buf[0] == '\004') {
-                    close(4); // close pipe to shell
-                    fprintf(stdout, "Received Ctrl+D.\r\n");
-                }
-                if (buf[0] == '\r' || buf[0] == '\n') {
-                    write(ofd, &cr_lf, 2);
-                    write(4, &lf, 1);
-                    continue;
-                }
-                write(ofd, &buf, count);
-                write(4, &buf, count);
-            }
-        }
-        if (poll_list[1].revents & POLLIN) {
-            if ((count = read(5, &buf, 255)) != 0) {
-                if (count == -1) {
-                    fprintf(stderr, "Reading from stdin failed: %s\n",
-                            strerror(errno));
-                    exit(1);
-                }
-                for (int i = 0; i < count; i++) {
-                    if (buf[i] == '\n') {
-                        write(ofd, &cr_lf, 2);
-                        continue;
-                    }
-                    write(ofd, buf+i, 1);
-                }
-            }
-        }
-        if (poll_list[0].revents & POLLHUP) {
-            fprintf(stderr, "POLLHUP received.");
-            break;
-        }
-        if (poll_list[0].revents & POLLERR) {
-            fprintf(stderr, "POLLERR received.");
-            break;
-        }
-        if (poll_list[1].revents & POLLHUP) {
-            fprintf(stderr, "POLLHUP received.\r\n");
-            if (waitpid(pid, &status, 0) < 0) {
-                fprintf(stderr, "waitpid failed: %s\r\n", strerror(errno));
+    if (shell_option) {
+        while (1) {
+            if ((ret = poll(poll_list, 2, 0)) < 0) {
+                fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
                 exit(1);
             }
-            int sig = status & 0x007f;
-            int sta = status & 0xff00;
-            fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS =%d\r\n",
-                    sig, sta);
-            break;
-        }
-        if (poll_list[1].revents & POLLERR) {
-            fprintf(stderr, "POLLERR received.");
-            break;
+
+            if (poll_list[0].revents & POLLIN) {
+                if ((count = read(ifd, &buf, 255)) != 0) {
+                    if (count == -1) {
+                        fprintf(stderr, "Reading from stdin failed: %s\n",
+                                strerror(errno));
+                        exit(1);
+                    }
+                    for (int i = 0; i < count; i++) {
+                        if (buf[i] == '\003') {
+                            if (kill(pid, SIGINT) < 0) {
+                                fprintf(stderr, "Failed to kill shell process: %s\n",
+                                        strerror(errno));
+                            }
+                        }
+                        if (buf[i] == '\004') {
+                            close(4); // close pipe to shell
+                            fprintf(stdout, "Received Ctrl+D.\r\n");
+                        }
+                        if (buf[i] == '\r' || buf[0] == '\n') {
+                            write(ofd, &cr_lf, 2);
+                            write(4, &lf, 1);
+                            continue;
+                        }
+                        write(ofd, &buf, count);
+                        write(4, &buf, count);
+                    }
+                }
+            }
+            if (poll_list[1].revents & POLLIN) {
+                if ((count = read(5, &buf, 255)) != 0) {
+                    if (count == -1) {
+                        fprintf(stderr, "Reading from stdin failed: %s\n",
+                                strerror(errno));
+                        exit(1);
+                    }
+                    for (int i = 0; i < count; i++) {
+                        if (buf[i] == '\n') {
+                            write(ofd, &cr_lf, 2);
+                            continue;
+                        }
+                        write(ofd, buf+i, 1);
+                    }
+                }
+            }
+            if (poll_list[0].revents & POLLHUP) {
+                fprintf(stderr, "POLLHUP received.");
+                break;
+            }
+            if (poll_list[0].revents & POLLERR) {
+                fprintf(stderr, "POLLERR received.");
+                break;
+            }
+            if (poll_list[1].revents & POLLHUP ||
+                poll_list[1].revents & POLLERR) {
+                if (waitpid(pid, &status, 0) < 0) {
+                    fprintf(stderr, "waitpid failed: %s\r\n", strerror(errno));
+                    exit(1);
+                }
+//                int sig = status & 0x007f;
+//                int sta = (status >> 8) & 0xff00;
+                int sig = WTERMSIG(status);
+                int sta = WEXITSTATUS(status);
+                fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\r\n",
+                        sig, sta);
+                break;
+            }
+//            if (poll_list[1].revents & POLLERR) {
+//                fprintf(stderr, "POLLERR received.");
+//                break;
+//            }
         }
     }
-
-//    // Non-shell option
-//    int count;
-//    char buf[255];
-//    char cr_lf[] = "\r\n";
-//    char lf[] = "\n";
-//    while ((count = read(ifd, &buf, 255)) != 0) {
-//        if (count == -1) {
-//            fprintf(stderr, "Reading from stdin failed: %s\n", strerror(errno));
-//            exit(2);
-//        }
-//        if (buf[0] == '\004') {
-//            fprintf(stdout, "Received Ctrl+D and terminated shell.\r\n");
-//            break;
-//        }
-//        if (buf[0] == '\r' || buf[0] == '\n') {
-//            write(ofd, &cr_lf, 2);
-//            continue;
-//        }
-//        write(ofd, &buf, count);
-//    }
+    // Non-shell option
+    else {
+        while ((count = read(ifd, &buf, 255)) != 0) {
+            if (count == -1) {
+                fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
+                exit(2);
+            }
+            if (buf[0] == '\004') {
+                fprintf(stdout, "Received Ctrl+D.\r\n");
+                break;
+            }
+            if (buf[0] == '\003') {
+                fprintf(stdout, "Received Ctrl+C.\r\n");
+                break;
+            }
+            if (buf[0] == '\r' || buf[0] == '\n') {
+                write(ofd, &cr_lf, 2);
+                continue;
+            }
+            write(ofd, &buf, count);
+        }
+    }
 
     // Restore terminal settings.
     if (tcsetattr(ifd, TCSANOW, &old_tio) < 0) {
