@@ -2,4 +2,24 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
-lab1a:
+lab1a: Program that enables character-at-a-time, full
+       duplex terminal I/O. Provided the --shell argument,
+       the program will initiate polled I/O between a
+       child shell process running \bin\bash and the
+       terminal process. Upon program completion, original
+       terminal settings are reinstated.
+
+Included files:
+lab1a.c  - C source module
+README   - description of included files
+Makefile - makefile to build program and tarball, supports
+           the following commands:
+           make       - build the lab1a executable
+           make clean - remove any files created by the Makefile
+           make dist  - build a tarball lab1a-205348339.tar.gz
+                        containing all included files
+
+References:
+Used the following examples to gain better understanding of termios.h
+http://tldp.org/HOWTO/Serial-Programming-HOWTO/x115.html
+https://cboard.cprogramming.com/linux-programming/158476-termios-examples.html

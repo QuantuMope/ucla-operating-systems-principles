@@ -4,7 +4,7 @@
 
 .SILENT:
 
-default: clean lab1a
+default: lab1a
 
 lab1a:
 	gcc -g -Wall -Wextra lab1a.c -o lab1a
