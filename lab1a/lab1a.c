@@ -88,7 +88,7 @@ void shell_process() {
         close(pfd2[1]);
 
         // Execute shell.
-        char *no_args[] = {NULL};
+        char *no_args[] = {"/bin/bash", NULL};
         if (execv("/bin/bash", no_args) < 0) {
             fprintf(stderr, "Failed to execute shell: %s\r\n", strerror(errno));
             exit(1);
@@ -131,7 +131,7 @@ void shell_process() {
             for (int i = 0; i < count; i++) {
                 switch (buf[i]) {
                     case '\3':
-                        fprintf(stdout, "^C\r\n");
+                        write_check(kout, "^C\r\n", 4);
                         if (kill(pid, SIGINT) < 0) {
                             fprintf(stderr, "Failed to kill shell process: %s\r\n", strerror(errno));
                             exit(1);
@@ -139,8 +139,8 @@ void shell_process() {
                         escape = 1;
                         break;
                     case '\4':
+                        write_check(kout, "^D\r\n", 4);
                         close(sin); // close pipe to shell
-                        fprintf(stdout, "^D\r\n");
                         escape = 1;
                         break;
                     case '\r':
@@ -199,12 +199,12 @@ void non_shell_process() {
         }
         for (int i = 0; i < count; i++) {
             if (buf[i] == '\3') {
-                fprintf(stdout, "^C\r\n");
+                write_check(ofd, "^C\r\n", 4);
                 escape = 1;
                 break;
             }
             if (buf[i] == '\4') {
-                fprintf(stdout, "^D\r\n");
+                write_check(ofd, "^D\r\n", 4);
                 escape = 1;
                 break;
             }
