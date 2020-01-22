@@ -131,7 +131,7 @@ void shell_process() {
             for (int i = 0; i < count; i++) {
                 switch (buf[i]) {
                     case '\3':
-                        fprintf(stdout, "Received Ctrl+C.\r\n");
+                        fprintf(stdout, "^C\r\n");
                         if (kill(pid, SIGINT) < 0) {
                             fprintf(stderr, "Failed to kill shell process: %s\r\n", strerror(errno));
                             exit(1);
@@ -140,7 +140,7 @@ void shell_process() {
                         break;
                     case '\4':
                         close(sin); // close pipe to shell
-                        fprintf(stdout, "Received Ctrl+D.\r\n");
+                        fprintf(stdout, "^D\r\n");
                         escape = 1;
                         break;
                     case '\r':
@@ -198,13 +198,13 @@ void non_shell_process() {
             exit(1);
         }
         for (int i = 0; i < count; i++) {
-            if (buf[i] == '\4') {
-                fprintf(stdout, "Received Ctrl+D.\r\n");
+            if (buf[i] == '\3') {
+                fprintf(stdout, "^C\r\n");
                 escape = 1;
                 break;
             }
-            if (buf[i] == '\3') {
-                fprintf(stdout, "Received Ctrl+C.\r\n");
+            if (buf[i] == '\4') {
+                fprintf(stdout, "^D\r\n");
                 escape = 1;
                 break;
             }

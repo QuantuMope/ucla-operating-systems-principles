@@ -3,11 +3,14 @@ EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
 lab1a: Program that enables character-at-a-time, full
-       duplex terminal I/O. Provided the --shell argument,
-       the program will initiate polled I/O between a
-       child shell process running \bin\bash and the
-       terminal process. Upon program completion, original
-       terminal settings are reinstated.
+       duplex terminal I/O. Run by itself, the program
+       will simply echo back input. Provided the --shell
+       argument, the program will initiate polled I/O
+       between a child shell process running \bin\bash
+       and the terminal process. Upon program completion
+       via ^C (SIGINT) or ^D (EOF), original terminal
+       settings are reinstated. Terminal settings will
+       not be reinstated if a system call error occurs.
 
 Included files:
 lab1a.c  - C source module
@@ -23,3 +26,7 @@ References:
 Used the following examples to gain better understanding of termios.h
 http://tldp.org/HOWTO/Serial-Programming-HOWTO/x115.html
 https://cboard.cprogramming.com/linux-programming/158476-termios-examples.html
+
+For grabbing the correct exit signal and status, I used the included macros
+shown in waitpid(2) rather than doing the bit operations myself.
+https://linux.die.net/man/2/waitpid
