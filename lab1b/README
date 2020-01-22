@@ -1,0 +1,17 @@
+NAME: Andrew Choi
+EMAIL: asjchoi@ucla.edu
+ID: 205348339
+
+lab1b:
+
+Included files:
+lab1b.c  - C source module
+README   - description of included files
+Makefile - makefile to build program and tarball, supports
+           the following commands:
+           make       - build the lab1b executable
+           make clean - remove any files created by the Makefile
+           make dist  - build a tarball lab1b-205348339.tar.gz
+                        containing all included files
+
+References:
