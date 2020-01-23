@@ -9,8 +9,7 @@ lab1a: Program that enables character-at-a-time, full
        between a child shell process running \bin\bash
        and the terminal process. Upon program completion
        via ^C (SIGINT) or ^D (EOF), original terminal
-       settings are reinstated. Terminal settings will
-       not be reinstated if a system call error occurs.
+       settings are reinstated.
 
 Included files:
 lab1a.c  - C source module
