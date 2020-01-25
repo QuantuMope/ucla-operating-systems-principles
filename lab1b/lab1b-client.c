@@ -74,7 +74,7 @@ void write_check(int fd, void* buf, int bytes) {
 
 int initialize_client(int port_no) {
     // Initialize TCP socket.
-    int sock_fd, new_sock_fd;
+    int sock_fd
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         fprintf(stderr, "Client failed to initialize socket: %s\n", strerror(errno));
         exit(1);
@@ -92,6 +92,37 @@ int initialize_client(int port_no) {
     return sock_fd;
 }
 
+void initialize_terminal(int term_id, struct termios* old_tio, struct termios* new_tio) {
+    // Copy old terminal settings for later restore.
+    if (tcgetattr(term_id, old_tio) < 0 || tcgetattr(term_id, new_tio) < 0) {
+        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+    // Set new terminal settings to no echo and non-canonical.
+    new_tio->c_iflag = ISTRIP;
+    new_tio->c_oflag = 0;
+    new_tio->c_lflag = 0;
+
+    // Change terminal settings.
+    if (tcsetattr(term_id, TCSANOW, new_tio) < 0) {
+        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+void reset_terminal(int term_id, const struct termios* settings) {
+    // Restore terminal settings.
+    if (tcsetattr(term_id, TCSANOW, settings) < 0) {
+        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(stdout, "Successfully restored terminal settings.\n");
+}
+
+void communicate_server() {
+
+}
+
 
 int main(int argc, char** argv) {
 
@@ -101,34 +132,17 @@ int main(int argc, char** argv) {
     struct termios old_tio, new_tio;
     int term_id = 0;
 
-    // Copy old terminal settings for later restore.
-    if (tcgetattr(term_id, &old_tio) < 0 ||
-        tcgetattr(term_id, &new_tio) < 0){
-        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
+    // Initialize terminal.
+    initialize_terminal(term_id, &old_tio, &new_tio);
 
-    // Set new terminal settings to no echo and non-canonical.
-    new_tio.c_iflag = ISTRIP;
-    new_tio.c_oflag = 0;
-    new_tio.c_lflag = 0;
+    // Start up client.
+    int server_fd = initialize_client(port_no);
 
-    // Change terminal settings.
-    if (tcsetattr(term_id, TCSANOW, &new_tio) < 0) {
-        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
+    // Communicate to server.
 
-    int sock_fd = initialize_client(port_no);
 
-    // Start program.
-    shell_process();
-
-    // Restore terminal settings.
-    if (tcsetattr(term_id, TCSANOW, &old_tio) < 0) {
-        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
-    }
-    fprintf(stdout, "Successfully restored terminal settings.\n");
+    // Rest terminal.
+    reset_terminal(term_id, &old_tio);
 
     exit(0);
 }

@@ -14,6 +14,7 @@
 #include <sys/poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 
 
@@ -208,16 +209,42 @@ int initialize_server(int port_no) {
         fprintf(stderr, "Server failed to bind socket: %s\n", strerror(errno));
         exit(1);
     }
-    // Listen on network socket specified by port_name.
     if (listen(sock_fd, 5) < 0) {
         fprintf(stderr, "Server failed to listen to socket: %s\n", strerror(errno));
         exit(1);
     }
-    if ((new_sock_fd = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen))<0) {
+    if ((new_sock_fd = accept(sock_fd, (struct sockaddr*)&address, (socklen_t*)sizeof(address)))<0) {
         fprintf(stderr, "Server failed to accept socket connection: %s\n", strerror(errno));
         exit(1);
     }
     return new_sock_fd;
+}
+
+void initialize_terminal(int term_id, struct termios* old_tio, struct termios* new_tio) {
+    // Copy old terminal settings for later restore.
+    if (tcgetattr(term_id, old_tio) < 0 || tcgetattr(term_id, new_tio) < 0) {
+        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+    // Set new terminal settings to no echo and non-canonical.
+    new_tio->c_iflag = ISTRIP;
+    new_tio->c_oflag = 0;
+    new_tio->c_lflag = 0;
+
+    // Change terminal settings.
+    if (tcsetattr(term_id, TCSANOW, new_tio) < 0) {
+        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+void reset_terminal(int term_id, const struct termios* settings) {
+    // Restore terminal settings.
+    if (tcsetattr(term_id, TCSANOW, settings) < 0) {
+        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(stdout, "Successfully restored terminal settings.\n");
 }
 
 
@@ -229,23 +256,8 @@ int main(int argc, char** argv) {
     struct termios old_tio, new_tio;
     int term_id = 0;
 
-    // Copy old terminal settings for later restore.
-    if (tcgetattr(term_id, &old_tio) < 0 ||
-        tcgetattr(term_id, &new_tio) < 0){
-        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
-
-    // Set new terminal settings to no echo and non-canonical.
-    new_tio.c_iflag = ISTRIP;
-    new_tio.c_oflag = 0;
-    new_tio.c_lflag = 0;
-
-    // Change terminal settings.
-    if (tcsetattr(term_id, TCSANOW, &new_tio) < 0) {
-        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
+    // Initialize terminal.
+    initialize_terminal(term_id, &old_tio, &new_tio);
 
     // Start up server socket.
     initialize_server(port_no);
@@ -253,11 +265,8 @@ int main(int argc, char** argv) {
     // Start program.
     shell_process();
 
-    // Restore terminal settings.
-    if (tcsetattr(term_id, TCSANOW, &old_tio) < 0) {
-        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
-    }
-    fprintf(stdout, "Successfully restored terminal settings.\n");
+    // Reset terminal.
+    reset_terminal(term_id, &old_tio);
 
     exit(0);
 }
