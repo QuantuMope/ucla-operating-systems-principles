@@ -70,7 +70,7 @@ void write_check(int fd, void* buf, int bytes) {
     }
 }
 
-void shell_process(int client_fd) {
+void process_client_requests(int client_fd) {
     // Initiate pipes from process to shell.
     int pfd1[2];  // read 3, write 4
     int pfd2[2];  // read 5, write 6
@@ -229,7 +229,7 @@ int main(int argc, char** argv) {
     int client_fd = initialize_server(args[0]);
 
     // Start shell process and process client requests.
-    shell_process(client_fd);
+    process_client_requests(client_fd);
 
     exit(0);
 }

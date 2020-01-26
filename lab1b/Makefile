@@ -6,6 +6,9 @@
 
 default: clean client server
 
+example:
+	gcc -g -Wall -Wextra example.c -o example -lz
+
 client:
 	gcc -g -Wall -Wextra lab1b-client.c -o lab1b-client
 

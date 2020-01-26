@@ -131,7 +131,7 @@ void reset_terminal(int term_id, const struct termios* settings) {
     fprintf(stdout, "Successfully restored terminal settings.\n");
 }
 
-void communicate_server(int server_fd) {
+void communicate_server(int server_fd, int* args, char* log_filename) {
     // Setup polling between stdin (keyboard) and socket (server).
     struct pollfd poll_list[2];
     poll_list[0].fd = 0; // stdin
@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
     int server_fd = initialize_client(args[0]);
 
     // Communicate to server.
-    communicate_server(server_fd);
+    communicate_server(server_fd, args, log_filename);
 
     // Rest terminal.
     reset_terminal(term_id, &old_tio);
