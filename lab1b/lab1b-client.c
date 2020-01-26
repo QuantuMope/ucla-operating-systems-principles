@@ -15,6 +15,8 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include "zlib.h"
 
 
 /*
@@ -22,15 +24,16 @@
  * In this case, only --shell is a valid argument.
  * Returns 1 if --shell is provided and 0 otherwise.
  */
-int process_command_line(int argc, char** argv) {
+char* process_command_line(int argc, char** argv, int* args) {
     char c;
     int option_index = 0;
     int port_ok = 0;
     char* port_name;
     char* log_filename;
     static struct option long_options[] = {
-            {"port", required_argument, 0, 'p'},
-            {"log",  required_argument, 0, 'l'},
+            {"port",     required_argument, 0, 'p'},
+            {"compress", no_argument,       0, 'c'},
+            {"log",      required_argument, 0, 'l'},
             {0, 0, 0, 0}
     };
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
@@ -42,8 +45,15 @@ int process_command_line(int argc, char** argv) {
                 port_ok = 1;
                 port_name = optarg;
                 break;
+            case 'c':
+                args[1] = 1;
+                break;
             case 'l':
-                log_filename = optarg;
+                log_filename = (char*)malloc(sizeof(char) * strlen(optarg)+1);
+                if (log_filename != NULL) {
+                    strcpy(log_filename, optarg);
+                }
+                args[2] = 1;
         }
     }
     // Check for any other unwanted command line arguments
@@ -57,7 +67,8 @@ int process_command_line(int argc, char** argv) {
         fprintf(stderr, "--port argument not specified. \n");
         exit(1);
     }
-    return atoi(port_name);
+    args[0] = atoi(port_name);
+    return log_filename;
 }
 
 /*
@@ -74,9 +85,9 @@ void write_check(int fd, void* buf, int bytes) {
 
 int initialize_client(int port_no) {
     // Initialize TCP socket.
-    int sock_fd
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        fprintf(stderr, "Client failed to initialize socket: %s\n", strerror(errno));
+    int server_fd;
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        fprintf(stderr, "Client failed to initialize socket: %s\r\n", strerror(errno));
         exit(1);
     }
     struct sockaddr_in address;
@@ -84,12 +95,13 @@ int initialize_client(int port_no) {
     address.sin_port = htons(port_no);
 
     // Connect to server.
-    if (connect(sock_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        fprintf(stderr, "Client failed to connect to server: %s\n", strerror(errno));
+    fprintf(stdout, "Client attempting to connect to server.\r\n");
+    if (connect(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        fprintf(stderr, "Client failed to connect to server: %s\r\n", strerror(errno));
         exit(1);
     }
-
-    return sock_fd;
+    fprintf(stdout, "Client successfully connected to server.\r\n");
+    return server_fd;
 }
 
 void initialize_terminal(int term_id, struct termios* old_tio, struct termios* new_tio) {
@@ -119,15 +131,91 @@ void reset_terminal(int term_id, const struct termios* settings) {
     fprintf(stdout, "Successfully restored terminal settings.\n");
 }
 
-void communicate_server() {
+void communicate_server(int server_fd) {
+    // Setup polling between stdin (keyboard) and socket (server).
+    struct pollfd poll_list[2];
+    poll_list[0].fd = 0; // stdin
+    poll_list[0].events = POLLIN;
+    poll_list[1].fd = server_fd;
+    poll_list[1].events = POLLIN;
 
+    // File descriptors
+    int kin = 0;
+    int kout = 1;
+
+    int escape = 0;
+    int count;
+    char buf[255];
+
+    while (1) {
+        if (poll(poll_list, 2, 0) < 0) {
+            fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
+            exit(1);
+        }
+        // Monitor keyboard input read ready.
+        if (poll_list[0].revents & POLLIN) {
+            if ((count = read(kin, &buf, 255)) < 0) {
+                fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
+                exit(1);
+            }
+            for (int i = 0; i < count; i++) {
+                switch (buf[i]) {
+                    case '\3':
+                        write_check(kout, "^C\r\n", 4);
+                        escape = 1;
+                        break;
+                    case '\4':
+                        write_check(kout, "^D\r\n", 4);
+                        escape = 1;
+                        break;
+                    case '\r':
+                    case '\n':
+                        write_check(kout, "\r\n", 2);
+                        write_check(server_fd, "\n", 1);
+                        continue;
+                }
+                write_check(kout, buf+i, 1);
+                write_check(server_fd, buf+i, 1);
+                if (escape) {
+                    break;
+                }
+            }
+        }
+
+        // Monitor shell read ready.
+        if (poll_list[1].revents & POLLIN) {
+            if ((count = read(server_fd, &buf, 255)) < 0) {
+                fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
+                exit(1);
+            }
+            if (count == 0) {
+                close(server_fd);
+                fprintf(stdout, "first works\r\n");
+                break;
+            }
+            for (int i = 0; i < count; i++) {
+                if (buf[i] == '\n')  {
+                    write_check(kout, "\r\n", 2);
+                    continue;
+                }
+                write_check(kout, buf+i, 1);
+            }
+        }
+
+        // Monitor server connection.
+        if (poll_list[1].revents & (POLLHUP | POLLERR)) {
+            fprintf(stdout, "second works\r\n");
+            break;
+        }
+    }
 }
 
 
 int main(int argc, char** argv) {
 
-    // Check for --shell argument
-    int port_no = process_command_line(argc, argv);
+    // args by index: 0 --> port no, 1 --> compress flag, 2 --> log flag
+    int args[3] = {0};
+    char* log_filename = process_command_line(argc, argv, args);
 
     struct termios old_tio, new_tio;
     int term_id = 0;
@@ -136,10 +224,10 @@ int main(int argc, char** argv) {
     initialize_terminal(term_id, &old_tio, &new_tio);
 
     // Start up client.
-    int server_fd = initialize_client(port_no);
+    int server_fd = initialize_client(args[0]);
 
     // Communicate to server.
-
+    communicate_server(server_fd);
 
     // Rest terminal.
     reset_terminal(term_id, &old_tio);

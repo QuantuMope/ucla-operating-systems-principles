@@ -23,13 +23,14 @@
  * In this case, only --shell is a valid argument.
  * Returns 1 if --shell is provided and 0 otherwise.
  */
-int process_command_line(int argc, char** argv) {
+void process_command_line(int argc, char** argv, int* args) {
     char c;
     int option_index = 0;
     int port_ok = 0;
     char* port_name;
     static struct option long_options[] = {
-            {"port", required_argument, 0, 'p'},
+            {"port",     required_argument, 0, 'p'},
+            {"compress", no_argument,       0, 'c'},
             {0, 0, 0, 0}
     };
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
@@ -40,6 +41,9 @@ int process_command_line(int argc, char** argv) {
             case 'p':
                 port_ok = 1;
                 port_name = optarg;
+                break;
+            case 'c':
+                args[1] = 1;
         }
     }
     // Check for any other unwanted command line arguments
@@ -52,7 +56,7 @@ int process_command_line(int argc, char** argv) {
         fprintf(stderr, "--port argument not specified. \n");
         exit(1);
     }
-    return atoi(port_name);
+    args[0] = atoi(port_name);
 }
 
 /*
@@ -61,25 +65,24 @@ int process_command_line(int argc, char** argv) {
 void write_check(int fd, void* buf, int bytes) {
     char* path = (fd == 1) ? "stdout" : "shell";
     if (write(fd, buf, bytes) < 0) {
-        fprintf(stderr, "Failed to write to %s: %s\r\n", path, strerror(errno));
+        fprintf(stderr, "Failed to write to %s: %s\n", path, strerror(errno));
         exit(1);
     }
 }
 
-// --shell
-void shell_process() {
+void shell_process(int client_fd) {
     // Initiate pipes from process to shell.
     int pfd1[2];  // read 3, write 4
     int pfd2[2];  // read 5, write 6
     if (pipe(pfd1) < 0 || pipe(pfd2) < 0) {
-        fprintf(stderr, "Creating pipes failed: %s\r\n", strerror(errno));
+        fprintf(stderr, "Creating pipes failed: %s\n", strerror(errno));
         exit(1);
     }
 
     // Initialize child process.
     pid_t pid;
     if ((pid = fork()) < 0) {
-        fprintf(stderr, "Forking child process failed: %s\r\n", strerror(errno));
+        fprintf(stderr, "Forking child process failed: %s\n", strerror(errno));
         exit(1);
     }
     // Child process. Setup proper pipe connections.
@@ -96,9 +99,9 @@ void shell_process() {
         close(pfd2[1]);
 
         // Execute shell.
-        char *no_args[] = {NULL};
+        char *no_args[] = {"/bin/bash", NULL};
         if (execv("/bin/bash", no_args) < 0) {
-            fprintf(stderr, "Failed to execute shell: %s\r\n", strerror(errno));
+            fprintf(stderr, "Failed to execute shell: %s\n", strerror(errno));
             exit(1);
         }
     }
@@ -108,18 +111,16 @@ void shell_process() {
         close(pfd2[1]); // close fd 6 (write)
     }
 
-    // Set up polling for keyboard and shell input.
-    struct pollfd poll_list[2];
-    poll_list[0].fd = 0; // poll stdin
-    poll_list[0].events = POLLIN;
-    poll_list[1].fd = 5; // poll shell output
-    poll_list[1].events = POLLIN;
-
     // File descriptors.
-    int kin  = 0;
-    int kout = 1;
-    int sin  = 4; // writing to fd 4 will write to shell
-    int sout = 5; // reading from fd 5 is shell output
+    int sin  = pfd1[1]; // writing sin will write to shell
+    int sout = pfd2[0]; // reading from sout is shell output
+
+    // Set up polling for socket and shell input
+    struct pollfd poll_list[2];
+    poll_list[0].fd = client_fd; // poll client
+    poll_list[0].events = POLLIN;
+    poll_list[1].fd = sout; // poll shell output
+    poll_list[1].events = POLLIN;
 
     int count, status;
     int escape = 0;
@@ -127,39 +128,32 @@ void shell_process() {
 
     while (1) {
         if (poll(poll_list, 2, 0) < 0) {
-            fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
+            fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
             exit(1);
         }
-        // Monitor keyboard input read ready.
+        // Monitor client input read ready.
         if (poll_list[0].revents & POLLIN) {
-            if ((count = read(kin, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
-                exit(1);
+            if ((count = read(client_fd, &buf, 255)) < 0) {
+                fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
+                close(sin);
+                continue;
             }
             for (int i = 0; i < count; i++) {
                 switch (buf[i]) {
                     case '\3':
-                        fprintf(stdout, "^C\r\n");
                         if (kill(pid, SIGINT) < 0) {
-                            fprintf(stderr, "Failed to kill shell process: %s\r\n", strerror(errno));
+                            fprintf(stderr, "Failed to kill shell process: %s\n", strerror(errno));
                             exit(1);
                         }
                         escape = 1;
                         break;
                     case '\4':
                         close(sin); // close pipe to shell
-                        fprintf(stdout, "^D\r\n");
                         escape = 1;
                         break;
-                    case '\r':
-                    case '\n':
-                        write_check(kout, "\r\n", 2);
-                        write_check(sin, "\n", 1);
-                        continue;
                 }
                 if (escape)
                     break;
-                write_check(kout, buf+i, 1);
                 write_check(sin, buf+i, 1);
             }
         }
@@ -167,26 +161,21 @@ void shell_process() {
         // Monitor shell read ready.
         if (poll_list[1].revents & POLLIN) {
             if ((count = read(sout, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from shell failed: %s\r\n", strerror(errno));
+                fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
                 exit(1);
             }
             for (int i = 0; i < count; i++) {
-                if (buf[i] == '\n') {
-                    write_check(kout, "\r\n", 2);
-                    continue;
-                }
-                write_check(kout, buf+i, 1);
+                write_check(client_fd, buf+i, 1);
             }
         }
-
         // Monitor shell termination states.
-        if (poll_list[1].revents & POLLHUP ||
-            poll_list[1].revents & POLLERR) {
+        if (poll_list[1].revents & (POLLHUP | POLLERR)) {
             if (waitpid(pid, &status, 0) < 0) {
-                fprintf(stderr, "Failed to obtain shell exit status: %s\r\n", strerror(errno));
+                fprintf(stderr, "Failed to obtain shell exit status: %s\n", strerror(errno));
                 exit(1);
             }
-            fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\r\n", WTERMSIG(status), WEXITSTATUS(status));
+            fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", WTERMSIG(status), WEXITSTATUS(status));
+            close(client_fd);  // close network socket
             break;
         }
     }
@@ -205,68 +194,42 @@ int initialize_server(int port_no) {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port_no);
 
+    // Setting socket option to SO_REUSEADDR allows quick reconnection after closing the socket.
+    int opt = 1;
+    if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        fprintf(stderr, "Server failed to set socket options: %s\n", strerror(errno));
+        exit(1);
+    }
     if (bind(sock_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
         fprintf(stderr, "Server failed to bind socket: %s\n", strerror(errno));
         exit(1);
     }
+    fprintf(stdout, "Server waiting for client connection.\n");
     if (listen(sock_fd, 5) < 0) {
         fprintf(stderr, "Server failed to listen to socket: %s\n", strerror(errno));
         exit(1);
     }
-    if ((new_sock_fd = accept(sock_fd, (struct sockaddr*)&address, (socklen_t*)sizeof(address)))<0) {
+    socklen_t cli_addr_size = sizeof(address);
+    if ((new_sock_fd = accept(sock_fd, (struct sockaddr*)&address, &cli_addr_size))<0) {
         fprintf(stderr, "Server failed to accept socket connection: %s\n", strerror(errno));
         exit(1);
     }
+    fprintf(stdout, "Server successfully connected to client.\n");
     return new_sock_fd;
-}
-
-void initialize_terminal(int term_id, struct termios* old_tio, struct termios* new_tio) {
-    // Copy old terminal settings for later restore.
-    if (tcgetattr(term_id, old_tio) < 0 || tcgetattr(term_id, new_tio) < 0) {
-        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
-    // Set new terminal settings to no echo and non-canonical.
-    new_tio->c_iflag = ISTRIP;
-    new_tio->c_oflag = 0;
-    new_tio->c_lflag = 0;
-
-    // Change terminal settings.
-    if (tcsetattr(term_id, TCSANOW, new_tio) < 0) {
-        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
-}
-
-void reset_terminal(int term_id, const struct termios* settings) {
-    // Restore terminal settings.
-    if (tcsetattr(term_id, TCSANOW, settings) < 0) {
-        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
-        exit(1);
-    }
-    fprintf(stdout, "Successfully restored terminal settings.\n");
 }
 
 
 int main(int argc, char** argv) {
 
-    // Process command line arguments.
-    int port_no = process_command_line(argc, argv);
+    // args by index: 0 --> port no, 1 --> compress flag
+    int args[2] = {0};
+    process_command_line(argc, argv, args);
 
-    struct termios old_tio, new_tio;
-    int term_id = 0;
+    // Start up server socket and connect to client.
+    int client_fd = initialize_server(args[0]);
 
-    // Initialize terminal.
-    initialize_terminal(term_id, &old_tio, &new_tio);
-
-    // Start up server socket.
-    initialize_server(port_no);
-
-    // Start program.
-    shell_process();
-
-    // Reset terminal.
-    reset_terminal(term_id, &old_tio);
+    // Start shell process and process client requests.
+    shell_process(client_fd);
 
     exit(0);
 }
