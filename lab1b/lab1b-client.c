@@ -169,6 +169,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
     }
 
     if (!args[1]) {
+        // No compression.
         while (1) {
             if (poll(poll_list, 2, 0) < 0) {
                 fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
@@ -237,6 +238,8 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
         }
     }
     else {
+        // Compression.
+
         // Initialize zlib stream.
         z_stream strm;
         strm.zalloc = Z_NULL;
@@ -281,10 +284,10 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
                     }
                 }
                 if (deflateInit(&strm, Z_DEFAULT_COMPRESSION) != Z_OK) {
-                    fprintf(stderr, "Failed to initialize compression settings.\n");
+                    fprintf(stderr, "Failed to initialize compression settings.\r\n");
                     exit(1);
                 }
-                // Set compression parameters and poitners.
+                // Set compression parameters and pointers.
                 strm.avail_in = count;
                 strm.next_in = (unsigned char*)buf;
                 strm.avail_out = CHUNK;
@@ -292,7 +295,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
 
                 ret = deflate(&strm, Z_SYNC_FLUSH);
                 if (ret != Z_OK && ret != Z_STREAM_END) {
-                    fprintf(stderr, "Experienced error during compression.\n");
+                    fprintf(stderr, "Experienced error during compression.\r\n");
                     exit(1);
                 }
                 have = CHUNK - strm.avail_out;
@@ -324,7 +327,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
                     break;
                 }
                 if (inflateInit(&strm) != Z_OK) {
-                    fprintf(stderr, "Failed to initialize decompression settings.\n");
+                    fprintf(stderr, "Failed to initialize decompression settings.\r\n");
                     exit(1);
                 }
                 // Set decompression parameters and pointers.
@@ -335,7 +338,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
 
                 ret = inflate(&strm, Z_SYNC_FLUSH);
                 if (ret != Z_OK && ret != Z_STREAM_END) {
-                    fprintf(stderr, "Experienced error during decompression.\n");
+                    fprintf(stderr, "Experienced error during decompression.\r\n");
                     exit(1);
                 }
                 have = CHUNK - strm.avail_out;
