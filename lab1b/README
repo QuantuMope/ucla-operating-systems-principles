@@ -2,16 +2,47 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
-lab1b:
+Executables
+---------------------------------------------------------------------------
+lab1b-client:
+args: --port=PORT_NO, --log=FILENAME, --compress
+Telnet client. Enables character-at-a-time, full duplex terminal I/O.
+Communicates with the Telnet server over a TCP socket. The --port argument
+is mandatory. Provided the --compress argument, client will compress outgoing
+data and decompress incoming data using zlib. Provided the --log argument,
+the program will log the number of bytes and messages sent post-compression
+and received pre-decompression to the provided file.
 
+lab1b-server
+args: --port=PORT_NO, --compress
+Telnet server. Connects to the client through a TCP socket connection.
+Redirects client requests to a child shell process through pipes. Shell output
+is then redirected back to the client through the socket. The --port argument
+is mandatory and the --compress argument will also compress data to and from
+the socket using zlib.
+
+NOTE: Using the --compress argument on only one of the programs will lead to
+      unspecified behavior.
+
+---------------------------------------------------------------------------
 Included files:
-lab1b.c  - C source module
+lab1b-client.c - C source module for the telnet client
+lab1b-server.c - C source module for the telnet server
 README   - description of included files
 Makefile - makefile to build program and tarball, supports
            the following commands:
-           make       - build the lab1b executable
-           make clean - remove any files created by the Makefile
+           make       - build the lab1b-client and lab1b-server executable
+           make clean - remove all files created by the Makefile
            make dist  - build a tarball lab1b-205348339.tar.gz
-                        containing all included files
+                        containing all listed files
 
+---------------------------------------------------------------------------
 References:
+When compressing and decompressing data over the socket, I had problems where
+multiple compressed messages would stack back to back into the read buffer
+making it impossible to decompress the individual messages. To combat this, I
+sent a small 4 byte header for each compressed message detailing the size of
+the compressed data so that I could properly index the compressed messages
+even if they were stacked back to back and decompress them accordingly.
+I used this post to learn how to efficiently transfer integers over a socket
+https://stackoverflow.com/questions/9140409/transfer-integer-over-a-socket-inc

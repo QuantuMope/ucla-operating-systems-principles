@@ -16,7 +16,9 @@
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include "zlib.h"
 
+#define CHUNK 1024
 
 /*
  * Uses getopt_long() to process command line arguments.
@@ -26,8 +28,6 @@
 void process_command_line(int argc, char** argv, int* args) {
     char c;
     int option_index = 0;
-    int port_ok = 0;
-    char* port_name;
     static struct option long_options[] = {
             {"port",     required_argument, 0, 'p'},
             {"compress", no_argument,       0, 'c'},
@@ -36,11 +36,11 @@ void process_command_line(int argc, char** argv, int* args) {
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
         switch (c) {
             case '?':
-                fprintf(stderr, "Invalid argument. Only valid argument is --shell\n");
+                fprintf(stderr, "Invalid argument. Valid arguments include --port=PORT_NO"
+                                ", --log=FILENAME, --compress. Port argument is mandatory.\n");
                 exit(1);
             case 'p':
-                port_ok = 1;
-                port_name = optarg;
+                args[0] = atoi(optarg);
                 break;
             case 'c':
                 args[1] = 1;
@@ -52,25 +52,59 @@ void process_command_line(int argc, char** argv, int* args) {
         exit(1);
     }
     // If mandatory --port argument no specified
-    if (!port_ok) {
-        fprintf(stderr, "--port argument not specified. \n");
+    if (!args[0]) {
+        fprintf(stderr, "--port argument must be provided. \n");
         exit(1);
     }
-    args[0] = atoi(port_name);
 }
 
 /*
  * A write function that greatly aids in reducing repeated code.
  */
-void write_check(int fd, void* buf, int bytes) {
-    char* path = (fd == 1) ? "stdout" : "shell";
+void write_check(int fd, void* buf, int bytes, char* path) {
     if (write(fd, buf, bytes) < 0) {
         fprintf(stderr, "Failed to write to %s: %s\n", path, strerror(errno));
         exit(1);
     }
 }
 
-void process_client_requests(int client_fd) {
+int initialize_server(int port_no) {
+    // Initialize TCP socket.
+    int sock_fd, new_sock_fd;
+    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        fprintf(stderr, "Server failed to initialize socket: %s\n", strerror(errno));
+        exit(1);
+    }
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port_no);
+
+    // Setting socket option to SO_REUSEADDR allows quick reconnection after closing the socket.
+    int opt = 1;
+    if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        fprintf(stderr, "Server failed to set socket options: %s\n", strerror(errno));
+        exit(1);
+    }
+    if (bind(sock_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        fprintf(stderr, "Server failed to bind socket: %s\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(stdout, "Server waiting for client connection.\n");
+    if (listen(sock_fd, 5) < 0) {
+        fprintf(stderr, "Server failed to listen to socket: %s\n", strerror(errno));
+        exit(1);
+    }
+    socklen_t cli_addr_size = sizeof(address);
+    if ((new_sock_fd = accept(sock_fd, (struct sockaddr*)&address, &cli_addr_size)) < 0) {
+        fprintf(stderr, "Server failed to accept socket connection: %s\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(stdout, "Server successfully connected to client.\n");
+    return new_sock_fd;
+}
+
+void process_client_requests(int client_fd, int compress_option) {
     // Initiate pipes from process to shell.
     int pfd1[2];  // read 3, write 4
     int pfd2[2];  // read 5, write 6
@@ -126,98 +160,168 @@ void process_client_requests(int client_fd) {
     int escape = 0;
     char buf[255];
 
-    while (1) {
-        if (poll(poll_list, 2, 0) < 0) {
-            fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
-            exit(1);
-        }
-        // Monitor client input read ready.
-        if (poll_list[0].revents & POLLIN) {
-            if ((count = read(client_fd, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
-                close(sin);
-                continue;
+    if (!compress_option) {
+        while (1) {
+            if (poll(poll_list, 2, 0) < 0) {
+                fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
+                exit(1);
             }
-            for (int i = 0; i < count; i++) {
-                switch (buf[i]) {
-                    case '\3':
-                        if (kill(pid, SIGINT) < 0) {
-                            fprintf(stderr, "Failed to kill shell process: %s\n", strerror(errno));
-                            exit(1);
-                        }
-                        escape = 1;
-                        break;
-                    case '\4':
-                        close(sin); // close pipe to shell
-                        escape = 1;
-                        break;
+            // Monitor client input read ready.
+            if (poll_list[0].revents & POLLIN) {
+                if ((count = read(client_fd, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
+                    close(sin);
+                    exit(1);
                 }
-                if (escape)
-                    break;
-                write_check(sin, buf+i, 1);
+                for (int i = 0; i < count; i++) {
+                    switch (buf[i]) {
+                        case '\3':
+                            if (kill(pid, SIGINT) < 0) {
+                                fprintf(stderr, "Failed to kill shell process: %s\n", strerror(errno));
+                                exit(1);
+                            }
+                            escape = 1;
+                            break;
+                        case '\4':
+                            close(sin); // close pipe to shell
+                            escape = 1;
+                            break;
+                    }
+                    if (escape)
+                        break;
+                    write_check(sin, buf+i, 1, "shell");
+                }
+            }
+
+            // Monitor shell read ready.
+            if (poll_list[1].revents & POLLIN) {
+                if ((count = read(sout, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
+                    exit(1);
+                }
+                write_check(client_fd, buf, count, "socket");
+            }
+            // Monitor shell termination states.
+            if (poll_list[1].revents & (POLLHUP | POLLERR)) {
+                if (waitpid(pid, &status, 0) < 0) {
+                    fprintf(stderr, "Failed to obtain shell exit status: %s\n", strerror(errno));
+                    exit(1);
+                }
+                fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", WTERMSIG(status), WEXITSTATUS(status));
+                close(client_fd);  // close network socket
+                break;
             }
         }
+    }
+    else {
+        int have;
+        unsigned char translated[CHUNK];
+        unsigned char compressed[CHUNK];
+        int compressed_data_size;
 
-        // Monitor shell read ready.
-        if (poll_list[1].revents & POLLIN) {
-            if ((count = read(sout, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
+        // Initialize zlib stream.
+        z_stream strm;
+        strm.zalloc = Z_NULL;
+        strm.zfree = Z_NULL;
+        strm.opaque = Z_NULL;
+        int ret;
+
+        while (1) {
+            if (poll(poll_list, 2, 0) < 0) {
+                fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
                 exit(1);
             }
-            for (int i = 0; i < count; i++) {
-                write_check(client_fd, buf+i, 1);
+            // Monitor client input read ready.
+            if (poll_list[0].revents & POLLIN) {
+                if (read(client_fd, &compressed_data_size, sizeof(int)) < 0) {
+                    fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
+                    exit(1);
+                }
+                if ((count = read(client_fd, &buf, ntohl(compressed_data_size))) < 0) {
+                    fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
+                    exit(1);
+                }
+                if (inflateInit(&strm) != Z_OK) {
+                    fprintf(stderr, "Failed to initialize decompression settings.\n");
+                    exit(1);
+                }
+                // Set decompression parameters and pointers.
+                strm.avail_in = count;
+                strm.next_in = (unsigned char*)buf;
+                strm.avail_out = CHUNK;
+                strm.next_out = translated;
+
+                ret = inflate(&strm, Z_SYNC_FLUSH);
+                if (ret != Z_OK && ret != Z_STREAM_END) {
+                    fprintf(stderr, "Experienced error during decompression.\n");
+                    exit(1);
+                }
+                have = CHUNK - strm.avail_out;
+
+                for (int i = 0; i < have; i++) {
+                    switch (translated[i]) {
+                        case '\3':
+                            if (kill(pid, SIGINT) < 0) {
+                                fprintf(stderr, "Failed to kill shell process: %s\n", strerror(errno));
+                                exit(1);
+                            }
+                            escape = 1;
+                            break;
+                        case '\4':
+                            close(sin); // close pipe to shell
+                            escape = 1;
+                            break;
+                    }
+                    if (escape)
+                        break;
+                    write_check(sin, translated+i, 1, "shell");
+                }
+                inflateEnd(&strm);
+            }
+            // Monitor shell read ready.
+            if (poll_list[1].revents & POLLIN) {
+                if ((count = read(sout, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
+                    exit(1);
+                }
+                if (deflateInit(&strm, Z_DEFAULT_COMPRESSION) != Z_OK) {
+                    fprintf(stderr, "Failed to initialize compression settings.\n");
+                    exit(1);
+                }
+                // Set compression parameters and pointers.
+                strm.avail_in = count;
+                strm.next_in = (unsigned char *)buf;
+                strm.avail_out = CHUNK;
+                strm.next_out = compressed;
+
+                ret = deflate(&strm, Z_SYNC_FLUSH);
+                if (ret != Z_OK && ret != Z_STREAM_END) {
+                    fprintf(stderr, "Experienced error during compression.\n");
+                    exit(1);
+                }
+                have = CHUNK - strm.avail_out;
+
+                // Send header info containing data size for when messages stack in read buffer.
+                compressed_data_size = htonl(have);
+                write_check(client_fd, &compressed_data_size, sizeof(int), "socket");
+                write_check(client_fd, compressed, have, "socket");
+                deflateEnd(&strm);
+            }
+
+            // Monitor shell termination states.
+            if (poll_list[1].revents & (POLLHUP | POLLERR)) {
+                if (waitpid(pid, &status, 0) < 0) {
+                    fprintf(stderr, "Failed to obtain shell exit status: %s\n", strerror(errno));
+                    exit(1);
+                }
+                fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", WTERMSIG(status), WEXITSTATUS(status));
+                close(client_fd);  // close network socket
+                break;
             }
         }
-        // Monitor shell termination states.
-        if (poll_list[1].revents & (POLLHUP | POLLERR)) {
-            if (waitpid(pid, &status, 0) < 0) {
-                fprintf(stderr, "Failed to obtain shell exit status: %s\n", strerror(errno));
-                exit(1);
-            }
-            fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d\n", WTERMSIG(status), WEXITSTATUS(status));
-            close(client_fd);  // close network socket
-            break;
-        }
+
     }
 }
-
-
-int initialize_server(int port_no) {
-    // Initialize TCP socket.
-    int sock_fd, new_sock_fd;
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        fprintf(stderr, "Server failed to initialize socket: %s\n", strerror(errno));
-        exit(1);
-    }
-    struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port_no);
-
-    // Setting socket option to SO_REUSEADDR allows quick reconnection after closing the socket.
-    int opt = 1;
-    if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        fprintf(stderr, "Server failed to set socket options: %s\n", strerror(errno));
-        exit(1);
-    }
-    if (bind(sock_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        fprintf(stderr, "Server failed to bind socket: %s\n", strerror(errno));
-        exit(1);
-    }
-    fprintf(stdout, "Server waiting for client connection.\n");
-    if (listen(sock_fd, 5) < 0) {
-        fprintf(stderr, "Server failed to listen to socket: %s\n", strerror(errno));
-        exit(1);
-    }
-    socklen_t cli_addr_size = sizeof(address);
-    if ((new_sock_fd = accept(sock_fd, (struct sockaddr*)&address, &cli_addr_size))<0) {
-        fprintf(stderr, "Server failed to accept socket connection: %s\n", strerror(errno));
-        exit(1);
-    }
-    fprintf(stdout, "Server successfully connected to client.\n");
-    return new_sock_fd;
-}
-
 
 int main(int argc, char** argv) {
 
@@ -229,7 +333,7 @@ int main(int argc, char** argv) {
     int client_fd = initialize_server(args[0]);
 
     // Start shell process and process client requests.
-    process_client_requests(client_fd);
+    process_client_requests(client_fd, args[1]);
 
     exit(0);
 }

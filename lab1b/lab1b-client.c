@@ -16,8 +16,10 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <ulimit.h>
 #include "zlib.h"
 
+#define CHUNK 1024
 
 /*
  * Uses getopt_long() to process command line arguments.
@@ -27,8 +29,6 @@
 char* process_command_line(int argc, char** argv, int* args) {
     char c;
     int option_index = 0;
-    int port_ok = 0;
-    char* port_name;
     char* log_filename;
     static struct option long_options[] = {
             {"port",     required_argument, 0, 'p'},
@@ -39,11 +39,11 @@ char* process_command_line(int argc, char** argv, int* args) {
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
         switch (c) {
             case '?':
-                fprintf(stderr, "Invalid argument. Only valid argument is --shell\n");
+                fprintf(stderr, "Invalid argument. Valid arguments include --port=PORT_NO"
+                                ", --log=FILENAME, --compress. Port argument is mandatory.\n");
                 exit(1);
             case 'p':
-                port_ok = 1;
-                port_name = optarg;
+                args[0] = atoi(optarg);
                 break;
             case 'c':
                 args[1] = 1;
@@ -62,24 +62,49 @@ char* process_command_line(int argc, char** argv, int* args) {
         exit(1);
     }
 
-    // If mandatory --port argument no specified
-    if (!port_ok) {
-        fprintf(stderr, "--port argument not specified. \n");
+    // Check to see that port argument was provided.
+    if (!args[0]) {
+        fprintf(stderr, "--port argument must be provided. \n");
         exit(1);
     }
-    args[0] = atoi(port_name);
     return log_filename;
 }
 
 /*
  * A write function that greatly aids in reducing repeated code.
  */
-void write_check(int fd, void* buf, int bytes) {
-    char* path = (fd == 1) ? "stdout" : "shell";
+void write_check(int fd, void* buf, int bytes, char* path) {
     if (write(fd, buf, bytes) < 0) {
         fprintf(stderr, "Failed to write to %s: %s\r\n", path, strerror(errno));
         exit(1);
     }
+}
+
+void initialize_terminal(struct termios* old_tio, struct termios* new_tio) {
+    // Copy old terminal settings for later restore.
+    if (tcgetattr(0, old_tio) < 0 || tcgetattr(0, new_tio) < 0) {
+        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+    // Set new terminal settings to no echo and non-canonical.
+    new_tio->c_iflag = ISTRIP;
+    new_tio->c_oflag = 0;
+    new_tio->c_lflag = 0;
+
+    // Change terminal settings.
+    if (tcsetattr(0, TCSANOW, new_tio) < 0) {
+        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
+        exit(1);
+    }
+}
+
+void reset_terminal(const struct termios* settings) {
+    // Restore terminal settings.
+    if (tcsetattr(0, TCSANOW, settings) < 0) {
+        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(stdout, "Successfully restored terminal settings.\n");
 }
 
 
@@ -104,31 +129,17 @@ int initialize_client(int port_no) {
     return server_fd;
 }
 
-void initialize_terminal(int term_id, struct termios* old_tio, struct termios* new_tio) {
-    // Copy old terminal settings for later restore.
-    if (tcgetattr(term_id, old_tio) < 0 || tcgetattr(term_id, new_tio) < 0) {
-        fprintf(stderr, "Failed to get terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
-    // Set new terminal settings to no echo and non-canonical.
-    new_tio->c_iflag = ISTRIP;
-    new_tio->c_oflag = 0;
-    new_tio->c_lflag = 0;
-
-    // Change terminal settings.
-    if (tcsetattr(term_id, TCSANOW, new_tio) < 0) {
-        fprintf(stderr, "Failed to set terminal attributes: %s\n", strerror(errno));
-        exit(1);
-    }
-}
-
-void reset_terminal(int term_id, const struct termios* settings) {
-    // Restore terminal settings.
-    if (tcsetattr(term_id, TCSANOW, settings) < 0) {
-        fprintf(stderr, "Failed to restore terminal settings: %s\r\n", strerror(errno));
-        exit(1);
-    }
-    fprintf(stdout, "Successfully restored terminal settings.\n");
+void log_to_file(int log_fd, int count, char* buf, char flag) {
+    char tmp_num[10];
+    sprintf(tmp_num, "%d", count);
+    if (flag == 'r')
+        write_check(log_fd, "RECEIVED ", 9, "log file");
+    else
+        write_check(log_fd, "SENT ", 5, "log file");
+    write_check(log_fd, tmp_num, strlen(tmp_num), "log file");
+    write_check(log_fd, " bytes: ", 8, "log file");
+    write_check(log_fd, buf, count, "log file");
+    write_check(log_fd, "\n", 1, "log file");
 }
 
 void communicate_server(int server_fd, int* args, char* log_filename) {
@@ -147,65 +158,206 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
     int count;
     char buf[255];
 
-    while (1) {
-        if (poll(poll_list, 2, 0) < 0) {
-            fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
+    // Setup log file if option enabled.
+    int log_fd;
+    if (args[2]) {
+        if ((log_fd = creat(log_filename, 0666)) < 0) {
+            fprintf(stderr, "Failed to initialize log file: %s\r\n", strerror(errno));
             exit(1);
         }
-        // Monitor keyboard input read ready.
-        if (poll_list[0].revents & POLLIN) {
-            if ((count = read(kin, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
+        free(log_filename);
+    }
+
+    if (!args[1]) {
+        while (1) {
+            if (poll(poll_list, 2, 0) < 0) {
+                fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
                 exit(1);
             }
-            for (int i = 0; i < count; i++) {
-                switch (buf[i]) {
-                    case '\3':
-                        write_check(kout, "^C\r\n", 4);
-                        escape = 1;
-                        break;
-                    case '\4':
-                        write_check(kout, "^D\r\n", 4);
-                        escape = 1;
-                        break;
-                    case '\r':
-                    case '\n':
-                        write_check(kout, "\r\n", 2);
-                        write_check(server_fd, "\n", 1);
-                        continue;
+            // Monitor keyboard input read ready.
+            if (poll_list[0].revents & POLLIN) {
+                if ((count = read(kin, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
+                    exit(1);
                 }
-                write_check(kout, buf+i, 1);
-                write_check(server_fd, buf+i, 1);
-                if (escape) {
+                if (args[2]) {
+                    log_to_file(log_fd, count, buf, 's');
+                }
+                for (int i = 0; i < count; i++) {
+                    switch (buf[i]) {
+                        case '\3':
+                            write_check(kout, "^C\r\n", 4, "stdout");
+                            escape = 1;
+                            break;
+                        case '\4':
+                            write_check(kout, "^D\r\n", 4, "stdout");
+                            escape = 1;
+                            break;
+                        case '\r':
+                        case '\n':
+                            write_check(kout, "\r\n", 2, "stdout");
+                            write_check(server_fd, "\n", 1, "socket");
+                            continue;
+                    }
+                    write_check(kout, buf+i, 1, "stdout");
+                    write_check(server_fd, buf+i, 1, "socket");
+                    if (escape) {
+                        break;
+                    }
+                }
+            }
+
+            // Monitor shell read ready.
+            if (poll_list[1].revents & POLLIN) {
+                if ((count = read(server_fd, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
+                    exit(1);
+                }
+                if (count == 0) {
+                    close(server_fd);
                     break;
                 }
+                if (args[2]) {
+                    log_to_file(log_fd, count, buf, 'r');
+                }
+                for (int i = 0; i < count; i++) {
+                    if (buf[i] == '\n')  {
+                        write_check(kout, "\r\n", 2, "stdout");
+                        continue;
+                    }
+                    write_check(kout, buf+i, 1, "stdout");
+                }
             }
-        }
 
-        // Monitor shell read ready.
-        if (poll_list[1].revents & POLLIN) {
-            if ((count = read(server_fd, &buf, 255)) < 0) {
-                fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
-                exit(1);
-            }
-            if (count == 0) {
+            // Monitor server connection.
+            if (poll_list[1].revents & (POLLHUP | POLLERR)) {
                 close(server_fd);
-                fprintf(stdout, "first works\r\n");
                 break;
             }
-            for (int i = 0; i < count; i++) {
-                if (buf[i] == '\n')  {
-                    write_check(kout, "\r\n", 2);
-                    continue;
-                }
-                write_check(kout, buf+i, 1);
-            }
         }
+    }
+    else {
+        // Initialize zlib stream.
+        z_stream strm;
+        strm.zalloc = Z_NULL;
+        strm.zfree = Z_NULL;
+        strm.opaque = Z_NULL;
 
-        // Monitor server connection.
-        if (poll_list[1].revents & (POLLHUP | POLLERR)) {
-            fprintf(stdout, "second works\r\n");
-            break;
+        int have, ret;
+        unsigned char compressed[CHUNK];
+        unsigned char translated[CHUNK];
+        int compressed_data_size;
+
+        while (1) {
+            if (poll(poll_list, 2, 0) < 0) {
+                fprintf(stderr, "Polling has failed: %s\r\n", strerror(errno));
+                exit(1);
+            }
+            // Monitor keyboard input read ready.
+            if (poll_list[0].revents & POLLIN) {
+                if ((count = read(kin, &buf, 255)) < 0) {
+                    fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
+                    exit(1);
+                }
+                for (int i = 0; i < count; i++) {
+                    switch (buf[i]) {
+                        case '\3':
+                            write_check(kout, "^C\r\n", 4, "stdout");
+                            escape = 1;
+                            break;
+                        case '\4':
+                            write_check(kout, "^D\r\n", 4, "stdout");
+                            escape = 1;
+                            break;
+                        case '\r':
+                        case '\n':
+                            write_check(kout, "\r\n", 2, "stdout");
+                            buf[i] = '\n';
+                            continue;
+                    }
+                    write_check(kout, buf+i, 1, "stdout");
+                    if (escape) {
+                        break;
+                    }
+                }
+                if (deflateInit(&strm, Z_DEFAULT_COMPRESSION) != Z_OK) {
+                    fprintf(stderr, "Failed to initialize compression settings.\n");
+                    exit(1);
+                }
+                // Set compression parameters and poitners.
+                strm.avail_in = count;
+                strm.next_in = (unsigned char*)buf;
+                strm.avail_out = CHUNK;
+                strm.next_out = compressed;
+
+                ret = deflate(&strm, Z_SYNC_FLUSH);
+                if (ret != Z_OK && ret != Z_STREAM_END) {
+                    fprintf(stderr, "Experienced error during compression.\n");
+                    exit(1);
+                }
+                have = CHUNK - strm.avail_out;
+
+                // Send header info containing data size for when messages stack in read buffer.
+                compressed_data_size = htonl(have);
+                write_check(server_fd, &compressed_data_size, sizeof(int), "socket");
+                write_check(server_fd, compressed, have, "socket");
+
+                // Log if argument is specified.
+                if (args[2]) {
+                    log_to_file(log_fd, have, (char*)compressed, 's');
+                }
+                deflateEnd(&strm);
+            }
+
+            // Monitor shell read ready.
+            if (poll_list[1].revents & POLLIN) {
+                if (read(server_fd, &compressed_data_size, sizeof(int)) < 0) {
+                    fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
+                    exit(1);
+                }
+                if ((count = read(server_fd, &buf, ntohl(compressed_data_size))) < 0) {
+                    fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
+                    exit(1);
+                }
+                if (count == 0) {
+                    close(server_fd);
+                    break;
+                }
+                if (inflateInit(&strm) != Z_OK) {
+                    fprintf(stderr, "Failed to initialize decompression settings.\n");
+                    exit(1);
+                }
+                // Set decompression parameters and pointers.
+                strm.avail_in = count;
+                strm.next_in = (unsigned char*)buf;
+                strm.avail_out = CHUNK;
+                strm.next_out = translated;
+
+                ret = inflate(&strm, Z_SYNC_FLUSH);
+                if (ret != Z_OK && ret != Z_STREAM_END) {
+                    fprintf(stderr, "Experienced error during decompression.\n");
+                    exit(1);
+                }
+                have = CHUNK - strm.avail_out;
+
+                for (int i = 0; i < have; i++) {
+                    if (translated[i] == '\n')  {
+                        write_check(kout, "\r\n", 2, "stdout");
+                        continue;
+                    }
+                    write_check(kout, translated+i, 1, "stdout");
+                }
+                // Log if argument is specified.
+                if (args[2]) {
+                    log_to_file(log_fd, count, buf, 'r');
+                }
+                inflateEnd(&strm);
+            }
+            // Monitor server connection.
+            if (poll_list[1].revents & (POLLHUP | POLLERR)) {
+                close(server_fd);
+                break;
+            }
         }
     }
 }
@@ -218,10 +370,9 @@ int main(int argc, char** argv) {
     char* log_filename = process_command_line(argc, argv, args);
 
     struct termios old_tio, new_tio;
-    int term_id = 0;
 
     // Initialize terminal.
-    initialize_terminal(term_id, &old_tio, &new_tio);
+    initialize_terminal(&old_tio, &new_tio);
 
     // Start up client.
     int server_fd = initialize_client(args[0]);
@@ -230,7 +381,7 @@ int main(int argc, char** argv) {
     communicate_server(server_fd, args, log_filename);
 
     // Rest terminal.
-    reset_terminal(term_id, &old_tio);
+    reset_terminal(&old_tio);
 
     exit(0);
 }
