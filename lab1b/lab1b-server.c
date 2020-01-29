@@ -158,7 +158,7 @@ void process_client_requests(int client_fd, int compress_option) {
 
     int count, status;
     int escape = 0;
-    char buf[255];
+    char buf[512];
 
     if (!compress_option) {
         while (1) {
@@ -168,7 +168,7 @@ void process_client_requests(int client_fd, int compress_option) {
             }
             // Monitor client input read ready.
             if (poll_list[0].revents & POLLIN) {
-                if ((count = read(client_fd, &buf, 255)) < 0) {
+                if ((count = read(client_fd, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from client failed: %s\n", strerror(errno));
                     close(sin);
                     exit(1);
@@ -195,7 +195,7 @@ void process_client_requests(int client_fd, int compress_option) {
 
             // Monitor shell read ready.
             if (poll_list[1].revents & POLLIN) {
-                if ((count = read(sout, &buf, 255)) < 0) {
+                if ((count = read(sout, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
                     exit(1);
                 }
@@ -280,7 +280,7 @@ void process_client_requests(int client_fd, int compress_option) {
             }
             // Monitor shell read ready.
             if (poll_list[1].revents & POLLIN) {
-                if ((count = read(sout, &buf, 255)) < 0) {
+                if ((count = read(sout, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from shell failed: %s\n", strerror(errno));
                     exit(1);
                 }

@@ -156,7 +156,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
 
     int escape = 0;
     int count;
-    char buf[255];
+    char buf[512];
 
     // Setup log file if option enabled.
     int log_fd;
@@ -177,7 +177,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
             }
             // Monitor keyboard input read ready.
             if (poll_list[0].revents & POLLIN) {
-                if ((count = read(kin, &buf, 255)) < 0) {
+                if ((count = read(kin, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
                     exit(1);
                 }
@@ -210,7 +210,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
 
             // Monitor shell read ready.
             if (poll_list[1].revents & POLLIN) {
-                if ((count = read(server_fd, &buf, 255)) < 0) {
+                if ((count = read(server_fd, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from server failed: %s\r\n", strerror(errno));
                     exit(1);
                 }
@@ -258,7 +258,7 @@ void communicate_server(int server_fd, int* args, char* log_filename) {
             }
             // Monitor keyboard input read ready.
             if (poll_list[0].revents & POLLIN) {
-                if ((count = read(kin, &buf, 255)) < 0) {
+                if ((count = read(kin, &buf, 512)) < 0) {
                     fprintf(stderr, "Reading from stdin failed: %s\r\n", strerror(errno));
                     exit(1);
                 }
@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
     // Communicate to server.
     communicate_server(server_fd, args, log_filename);
 
-    // Rest terminal.
+    // Reset terminal.
     reset_terminal(&old_tio);
 
     exit(0);
