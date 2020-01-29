@@ -16,7 +16,6 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <ulimit.h>
 #include "zlib.h"
 
 #define CHUNK 1024
