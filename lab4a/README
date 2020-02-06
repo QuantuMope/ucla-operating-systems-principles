@@ -1,0 +1,24 @@
+NAME: Andrew Choi
+EMAIL: asjchoi@ucla.edu
+ID: 205348339
+
+Beaglebone S\N: BBGW19010409
+           MAC: 2CF7F106A16D
+
+Included files:
+my_beaglebone.jpg - Image of Beaglebone.
+connected.png     - Screen shot of USB terminal session. Shows configured
+                    hostname and configured network access.
+copy.png          - Screen shot of copying a hello world program from a
+                    local session to the Beaglebone.
+build_run.png     - Screen shot of WIFI SSH session in which hello world
+                    program is built and ran on the Beaglebone.
+git.png           - Screen shot of WIFI SSH session in which a repository
+                    is cloned on the Beaglebone.
+README            - description of included files
+Makefile          - makefile to build program and tarball, supports
+                    the following commands:
+                    make       - build the lab1a executable
+                    make clean - remove any files created by the Makefile
+                    make dist  - build a tarball lab4a-205348339.tar.gz
+                                 containing all included files
