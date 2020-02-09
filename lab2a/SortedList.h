@@ -1,3 +1,10 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
+#include <getopt.h>
 /**
  * SortedList (and SortedListElement)
  *
@@ -83,4 +90,4 @@ int SortedList_length(SortedList_t *list);
 extern int opt_yield;
 #define	INSERT_YIELD	0x01	// yield in insert critical section
 #define	DELETE_YIELD	0x02	// yield in delete critical section
-#define	LOOKUP_YIELD	0x04	// yield in lookup/length critical esction
+#define	LOOKUP_YIELD	0x04	// yield in lookup/length critical section
