@@ -4,11 +4,23 @@ int num_threads = 1;
 int num_iters = 1;
 int opt_yield = 0;
 int opt_sync = 0; // 1:m 2:s 3: c
-pthread_mutex_t m_lock = PTHREAD_MUTEX_INITIALIZER;
-volatile int s_lock = 0;
+pthread_mutex_t m_lock_1 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t m_lock_2 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t m_lock_3 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t m_lock_4 = PTHREAD_MUTEX_INITIALIZER;
+volatile int s_lock_1 = 0;
+volatile int s_lock_2 = 0;
+volatile int s_lock_3 = 0;
+volatile int s_lock_4 = 0;
 char run_type[20] = "list-";
 SortedList_t* list;
 SortedListElement_t** elements;
+int thread_exit = 0;
+
+void catch_segfault() {
+    fprintf(stderr, "Segfault detected.\n");
+    exit(1);
+}
 
 void process_command_line(int argc, char** argv) {
     char c;
@@ -106,15 +118,68 @@ void process_command_line(int argc, char** argv) {
 
 void* thread_list_ops(void* input) {
     int offset = *((int*)input);
-    for (int i = 0; i < num_iters; i++) {
-        printf("%d\n", offset);
-        printf("%d\n", i);
-        SortedList_insert(list, *(elements+((i+offset)*sizeof(char*))));
+    if (opt_sync == 0) {
+        for (int i = 0; i < num_iters; i++) {
+            SortedList_insert(list, *(elements+((i+offset)*sizeof(char*))));
+        }
+        if (SortedList_length(list) == -1) {
+            thread_exit = 1;
+            return NULL;
+        }
+        for (int i = 0; i < num_iters; i++) {
+            if (SortedList_lookup(list, (*(elements+((i+offset)*sizeof(char*))))->key) == NULL) {
+                thread_exit = 1;
+                return NULL;
+            }
+            if (SortedList_delete(*(elements+((i+offset)*sizeof(char*)))) == 1) {
+                thread_exit = 1;
+                return NULL;
+            }
+        }
     }
-    SortedList_length(list);
-    for (int i = 0; i < num_iters; i++) {
-        SortedList_lookup(list, (*(elements+((i+offset)*sizeof(char*))))->key);
-        SortedList_delete(*(elements+((i+offset)*sizeof(char*))));
+    else if (opt_sync == 1) {
+        pthread_mutex_lock(&m_lock_1);
+        for (int i = 0; i < num_iters; i++) {
+            SortedList_insert(list, *(elements+((i+offset)*sizeof(char*))));
+        }
+//        pthread_mutex_unlock(&m_lock_1);
+//        pthread_mutex_lock(&m_lock_2);
+        if (SortedList_length(list) == -1) {
+            thread_exit = 1;
+            return NULL;
+        }
+//        pthread_mutex_unlock(&m_lock_2);
+//        pthread_mutex_lock(&m_lock_3);
+        for (int i = 0; i < num_iters; i++) {
+            if (SortedList_lookup(list, (*(elements+((i+offset)*sizeof(char*))))->key) == NULL) {
+                thread_exit = 1;
+                return NULL;
+            }
+            if (SortedList_delete(*(elements+((i+offset)*sizeof(char*)))) == 1) {
+                thread_exit = 1;
+                return NULL;
+            }
+        }
+        pthread_mutex_unlock(&m_lock_1);
+    }
+    else {
+        for (int i = 0; i < num_iters; i++) {
+            SortedList_insert(list, *(elements+((i+offset)*sizeof(char*))));
+        }
+        if (SortedList_length(list) == -1) {
+            thread_exit = 1;
+            return NULL;
+        }
+        for (int i = 0; i < num_iters; i++) {
+            if (SortedList_lookup(list, (*(elements+((i+offset)*sizeof(char*))))->key) == NULL) {
+                thread_exit = 1;
+                return NULL;
+            }
+            if (SortedList_delete(*(elements+((i+offset)*sizeof(char*)))) == 1) {
+                thread_exit = 1;
+                return NULL;
+            }
+        }
     }
     return NULL;
 }
@@ -122,6 +187,7 @@ void* thread_list_ops(void* input) {
 int main(int argc, char** argv) {
     // Process command line arguments.
     process_command_line(argc, argv);
+    signal(SIGSEGV, catch_segfault);
     int num_ops = num_threads * num_iters;
 
     struct timespec start, finish;
@@ -149,7 +215,7 @@ int main(int argc, char** argv) {
         offsets[i] = i * num_iters;
     }
 
-
+    // Start timer.
     if (clock_gettime(CLOCK_REALTIME, &start) < 0) {
         fprintf(stderr, "Failed to retrieve time: %s\n", strerror(errno));
         exit(1);
@@ -164,6 +230,10 @@ int main(int argc, char** argv) {
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
     }
+    if (thread_exit) {
+        fprintf(stderr, "Doubly linked list was corrupted.\n");
+        exit(2);
+    }
 
     if (clock_gettime(CLOCK_REALTIME, &finish) < 0) {
         fprintf(stderr, "Failed to retrieve time: %s\n", strerror(errno));
@@ -172,7 +242,11 @@ int main(int argc, char** argv) {
 
     long total_time_ns = finish.tv_nsec - start.tv_nsec;
     int total_ops = num_threads * num_iters * 3;
-    int length = SortedList_length(list);
+    int length;
+    if ((length = SortedList_length(list)) != 0) {
+        fprintf(stderr, "Doubly linked list length was not zero at exit.\n");
+        exit(2);
+    }
     printf("Total length is %d\n", length);
 
     printf("%s,%d,%d,%d,%d,%ld,%ld\n", run_type, num_threads, num_iters, 1, total_ops,
@@ -182,9 +256,9 @@ int main(int argc, char** argv) {
     for (int i = 0; i < num_ops; i++) {
         free(rand_keys[i]);
     }
-    for (int i = 0; i < num_ops; i++) {
-        free(*(elements + (i * sizeof(char *))));
-    }
+//    for (int i = 0; i < num_ops; i++) {
+//        free(*(elements + (i * sizeof(char *))));
+//    }
     free(elements);
     exit(0);
 }

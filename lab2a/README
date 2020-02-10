@@ -2,7 +2,6 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
-
 Included files:
 lab2a.c  - C source module
 README   - description of included files
@@ -12,5 +11,42 @@ Makefile - makefile to build program and tarball, supports
            make clean - remove any files created by the Makefile
            make dist  - build a tarball lab1a-205348339.tar.gz
                         containing all included files
+------------------------------------------------------------------
+Questions:
+2.1.1: Many iterations are required for errors to occur because
+       errors will happen only when a thread gets context switched
+       in the during the execution of its critical section. In other
+       words, the the total amount of work the thread must complete
+       must exceed the time slice it is allocated. This is why smaller
+       numbers of iterations rarely fail as the threads are able to
+       complete their tasks well within their first initial time slice.
 
+2.1.2: Yield runs are much slower due to the large number of additional
+       context switches. The additional time is going to the overhead
+       of having to save and reload thread states, registers, and stacks.
+       We cannot get valid per-operation timings with the --yield option
+       enabled because the majority of the time taken from the program
+       is from the overhead of the context switches.
+
+2.1.3: The average cost per operation drops with increasing iterations
+       due to the expensive cost of context switches being amortized.
+       With small numbers of iterations, the cost of context switches
+       dominate the total time taken by the program. As the number of
+       iterations increase, each thread completes more tasks before
+       a context switch occurs which results in the decreasing trend.
+       To arrive at the true cost per iteration, we could simply run
+       an increasing number of iterations until the cost per operations
+       converges.
+
+2.1.4: All options perform similarly for a low number of threads for two
+       reasons. First is because a low number of threads leads to less
+       locking and unlocking of the critical region which results in
+       reduced overhead. Second (and most importantly), as the number of
+       threads increase, more threads will compete for locks once reaching
+       the critical region. This subsequently results in a large number
+       of threads that must wait for a lock. Due to both of these
+       synchronization costs, all three protected operations slow down
+       as the number of threads increase.
+
+2.2.1:
 References:

@@ -1,5 +1,6 @@
 #include "SortedList.h"
 
+
 /**
  * SortedList_insert ... insert an element into a sorted list
  *
@@ -13,13 +14,13 @@
 void SortedList_insert(SortedList_t *list, SortedListElement_t *element) {
     SortedList_t *curr = list->next;
     SortedList_t *temp;
-    if (opt_yield & INSERT_YIELD)
-        sched_yield();
     while (curr->key != NULL) {
         if (*(curr->key) >= *(element->key)) {
             temp = curr->prev;
             curr->prev = element;
             element->next = curr;
+            if (opt_yield & INSERT_YIELD)
+                sched_yield();
             element->prev = temp;
             temp->next = element;
             return;
@@ -30,6 +31,8 @@ void SortedList_insert(SortedList_t *list, SortedListElement_t *element) {
     temp = curr->prev;
     curr->prev = element;
     element->next = curr;
+    if (opt_yield & INSERT_YIELD)
+        sched_yield();
     element->prev = temp;
     temp->next = element;
 }
@@ -49,13 +52,11 @@ void SortedList_insert(SortedList_t *list, SortedListElement_t *element) {
  *
  */
 int SortedList_delete( SortedListElement_t *element) {
-    if ((element->next->prev) != element || (element->prev->next) != element) {
-        fprintf(stderr, "Corrupted prev/next pointer detected.\n");
+    if ((element->next->prev) != element || (element->prev->next) != element)
         return 1;
-    }
+    element->next->prev = element->prev;
     if (opt_yield & DELETE_YIELD)
         sched_yield();
-    element->next->prev = element->prev;
     element->prev->next = element->next;
     return 0;
 }
@@ -73,12 +74,12 @@ int SortedList_delete( SortedListElement_t *element) {
  */
 SortedListElement_t *SortedList_lookup(SortedList_t *list, const char *key) {
     SortedList_t *curr = list->next;
-    if (opt_yield & LOOKUP_YIELD)
-        sched_yield();
     while (curr->key != NULL) {
         if (*(curr->key) == *key)  {
             return curr;
         }
+        if (opt_yield & LOOKUP_YIELD)
+            sched_yield();
         curr = curr->next;
     }
     return NULL;
@@ -96,13 +97,11 @@ SortedListElement_t *SortedList_lookup(SortedList_t *list, const char *key) {
 int SortedList_length(SortedList_t *list) {
     SortedList_t *curr = list->next;
     int length = 0;
-    if (opt_yield & LOOKUP_YIELD)
-        sched_yield();
     while (curr->key != NULL) {
-        if ((curr->next->prev) != curr || (curr->prev->next) != curr) {
-            fprintf(stderr, "Corrupted prev/next pointer detected.\n");
+        if ((curr->next->prev) != curr || (curr->prev->next) != curr)
             return -1;
-        }
+        if (opt_yield & LOOKUP_YIELD)
+            sched_yield();
         curr = curr->next;
         length++;
     }

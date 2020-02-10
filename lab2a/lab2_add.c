@@ -82,6 +82,13 @@ void add(long long *pointer, long long value) {
     *pointer = sum;
 }
 
+void add_c(long long *pointer, long long value) {
+    if (opt_yield)
+        sched_yield();
+    long long sum = *pointer + value;
+    *pointer = sum;
+}
+
 void* thread_add() {
     if (opt_sync == 0) {
         for (int i = 0; i < num_iters; i++) {
@@ -118,12 +125,12 @@ void* thread_add() {
     else {
         for (int i = 0; i < num_iters; i++) {
             while (!__sync_bool_compare_and_swap(&s_lock, 0, 1));
-            add(&counter, 1);
+            add_c(&counter, 1);
             __sync_bool_compare_and_swap(&s_lock, 1, 0);
         }
         for (int i = 0; i < num_iters; i++) {
             while (!__sync_bool_compare_and_swap(&s_lock, 0, 1));
-            add(&counter, -1);
+            add_c(&counter, -1);
             __sync_bool_compare_and_swap(&s_lock, 1, 0);
         }
     }
@@ -162,6 +169,13 @@ int main(int argc, char** argv) {
     long total_time_ns = finish.tv_nsec - start.tv_nsec;
     int total_ops = num_threads * num_iters * 2;
 
+    FILE* csv_file = fopen("lab2_add.csv", "a");
+    if (csv_file == NULL) {
+        fprintf(stderr, "Unable to open csv file: %s\n", strerror(errno));
+        exit(1);
+    }
+    fprintf(csv_file, "%s,%d,%d,%d,%ld,%ld,%lld\n", run_type, num_threads, num_iters, total_ops,
+           total_time_ns, total_time_ns/total_ops, counter);
     printf("%s,%d,%d,%d,%ld,%ld,%lld\n", run_type, num_threads, num_iters, total_ops,
             total_time_ns, total_time_ns/total_ops, counter);
 
