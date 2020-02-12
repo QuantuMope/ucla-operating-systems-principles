@@ -246,13 +246,20 @@ int main(int argc, char** argv) {
 
     // Create threads.
     for (int i = 0; i < num_threads; i++) {
-        pthread_create(&threads[i], NULL, &thread_list_ops, (void*)&offsets[i]);
+        if (pthread_create(&threads[i], NULL, &thread_list_ops, (void*)&offsets[i]) != 0) {
+            fprintf(stderr, "Creating thread number %d failed.\n", i);
+            exit(1);
+        }
     }
 
     // Wait for all threads to complete.
     for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
+        if (pthread_join(threads[i], NULL) != 0) {
+            fprintf(stderr, "Failed to join thread number %d.\n", i);
+            exit(1);
+        }
     }
+
     if (thread_exit) {
         fprintf(stderr, "Doubly linked list was corrupted.\n");
         exit(2);
@@ -265,8 +272,7 @@ int main(int argc, char** argv) {
 
     long long unsigned int total_time_ns = 1000000000 * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
     long long unsigned int total_ops = num_threads * num_iters * 3;
-    int length;
-    if ((length = SortedList_length(list)) != 0) {
+    if (SortedList_length(list) != 0) {
         fprintf(stderr, "Doubly linked list length was not zero at exit.\n");
         exit(2);
     }

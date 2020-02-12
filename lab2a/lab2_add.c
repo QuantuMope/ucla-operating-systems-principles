@@ -154,12 +154,18 @@ int main(int argc, char** argv) {
 
     // Create threads.
     for (int i = 0; i < num_threads; i++) {
-        pthread_create(&threads[i], NULL, &thread_add, NULL);
+        if (pthread_create(&threads[i], NULL, &thread_add, NULL) != 0) {
+            fprintf(stderr, "Creating thread number %d failed.\n", i);
+            exit(1);
+        }
     }
 
     // Wait for all threads to complete.
     for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
+        if (pthread_join(threads[i], NULL) != 0) {
+            fprintf(stderr, "Failed to join thread number %d.\n", i);
+            exit(1);
+        }
     }
 
     if (clock_gettime(CLOCK_MONOTONIC, &finish) < 0) {
