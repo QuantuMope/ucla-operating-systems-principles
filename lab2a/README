@@ -2,20 +2,48 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
+-------------------------------------------------------------------
 Included files:
-lab2a.c  - C source module
-README   - description of included files
-Makefile - makefile to build program and tarball, supports
-           the following commands:
-           make       - build the lab1a executable
-           make clean - remove any files created by the Makefile
-           make dist  - build a tarball lab1a-205348339.tar.gz
-                        containing all included files
+lab2_add.c      - C source module for counter addition threading
+lab2_list.c     - C source module for linked list operation threading
+SortedList.c    - C source module for all linked list operations
+SortedList.h    - Header file for SortedList.c
+lab2_add.csv    - Csv file containing data from add runs
+lab2_list.csv   - Csv file containing data from list runs
+lab2_add.gp     - Gnuplot script that plots various graphs shown below
+lab2_list.gp    - Gnuplot script that plots various graphs shown below
+lab2_add-1.png  - Graph of threads and iterations required for failure
+lab2_add-2.png  - Average time per operation w/ and w/o yields
+lab2_add-3.png  - Average time per (single threaded) operation
+                  vs. number of threads
+lab2_add-4.png  - Threads and iterations that can run successfully
+                  with yields under each of the sync operations
+lab2_add-5.png  - Average time per (protected) operation vs. the
+                  number of threads
+lab2_list-1.png - Average time per (single threaded) unprotected
+                  operation vs. number of iterations
+lab2_list-2.png - Threads and iterations required to generate
+                  a failure w/ and w/o yields
+lab2_list-3.png - Iterations that can run protected without failure
+lab2_list-4.png - Length-adjusted cost per operation vs. the number
+                  of threads for the various sync options.
+README          - description of all included files as well as answers
+                  to the project questions
+Makefile        - makefile to build program and tarball, supports
+                  the following commands:
+          make        - build the lab1a executable
+          make clean  - remove any files created by the Makefile
+          make dist   - build a tarball lab2a-205348339.tar.gz
+                      - containing all included files
+          make tests  - Conduct over 200 test cases and save the
+                      - results in csv files
+          make graphs - Create gnu plots using data obtained from
+                        the csv files
 ------------------------------------------------------------------
 Questions:
 2.1.1: Many iterations are required for errors to occur because
        errors will happen only when a thread gets context switched
-       in the during the execution of its critical section. In other
+       during the execution of its critical section. In other
        words, the the total amount of work the thread must complete
        must exceed the time slice it is allocated. This is why smaller
        numbers of iterations rarely fail as the threads are able to
@@ -26,7 +54,8 @@ Questions:
        of having to save and reload thread states, registers, and stacks.
        We cannot get valid per-operation timings with the --yield option
        enabled because the majority of the time taken from the program
-       is from the overhead of the context switches.
+       is from the overhead of the context switches rather than the
+       operations themselves.
 
 2.1.3: The average cost per operation drops with increasing iterations
        due to the expensive cost of context switches being amortized.
@@ -48,5 +77,27 @@ Questions:
        synchronization costs, all three protected operations slow down
        as the number of threads increase.
 
-2.2.1:
-References:
+2.2.1: Initially for a low number of threads, both mutex-protected operations
+       for adds and sorted lists seem to increase linearly with respect to
+       the number of threads. As the number of threads increase past a certain
+       point, for adds, the rate of increase for the cost per operation slowly
+       flat lines while the cost per operation for the linked list steadily
+       increases. In both cases, the increase in cost per operation makes sense
+       as more and more threads have to wait for access over the lock. The
+       differences in between the rate of increase for both methods can then
+       be attributed to differences between the complexity of the actual operations
+       being completed in the critical section as the add operation is extremely
+       simple while the linked list operations are comparatively complex.
+
+2.2.2: For a low number of threads, both mutex and spin lock operations
+       increase roughly linearly with the number of threads for list
+       operations. As the number of threads increases, it can be seen that
+       the slope of the mutex starts to flat line while spin locks steadily
+       increases. This is particularly prevalent when examining the cost per
+       operation between the two sync options for threads of 16 and 24 in the
+       csv file. The increase seen in the spin lock method is intuitive because
+       as the number of threads spin locking increases, the more wasted CPU time
+       there is. Mutex operations on the other hand will immediately deschedule
+       if the thread sees that a lock is still unobtainable leading to the
+       higher efficiency shown in the graphs. It should be noted that a similar
+       trend can be seen between mutex and spin lock for add operations as well.

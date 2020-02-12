@@ -1,5 +1,8 @@
-#include "SortedList.h"
+// NAME: Andrew Choi
+// EMAIL: asjchoi@ucla.edu
+// ID: 205348339
 
+#include "SortedList.h"
 
 /**
  * SortedList_insert ... insert an element into a sorted list

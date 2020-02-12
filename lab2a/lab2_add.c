@@ -1,3 +1,7 @@
+// NAME: Andrew Choi
+// EMAIL: asjchoi@ucla.edu
+// ID: 205348339
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -28,8 +32,8 @@ void process_command_line(int argc, char** argv) {
     while ((c = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
         switch (c) {
             case '?':
-                fprintf(stderr, "Invalid argument. Valid arguments include --port=PORT_NO"
-                                ", --log=FILENAME, --compress. Port argument is mandatory.\n");
+                fprintf(stderr, "Invalid argument. Valid arguments include --t=# --i=#"
+                                " --y --s=[m|s|c]\n");
                 exit(1);
             case 't':
                 num_threads = atoi(optarg);
@@ -82,13 +86,6 @@ void add(long long *pointer, long long value) {
     *pointer = sum;
 }
 
-void add_c(long long *pointer, long long value) {
-    if (opt_yield)
-        sched_yield();
-    long long sum = *pointer + value;
-    *pointer = sum;
-}
-
 void* thread_add() {
     if (opt_sync == 0) {
         for (int i = 0; i < num_iters; i++) {
@@ -123,15 +120,19 @@ void* thread_add() {
         }
     }
     else {
-        for (int i = 0; i < num_iters; i++) {
-            while (!__sync_bool_compare_and_swap(&s_lock, 0, 1));
-            add_c(&counter, 1);
-            __sync_bool_compare_and_swap(&s_lock, 1, 0);
-        }
-        for (int i = 0; i < num_iters; i++) {
-            while (!__sync_bool_compare_and_swap(&s_lock, 0, 1));
-            add_c(&counter, -1);
-            __sync_bool_compare_and_swap(&s_lock, 1, 0);
+        long long old, new;
+        int val = 1;
+        for (int i = 0; i < 2*num_iters; i++) {
+            while (1) {
+                old = counter;
+                new = old + val;
+                if (opt_yield)
+                    sched_yield();
+                if (__sync_val_compare_and_swap(&counter, old, new) == old)
+                    break;
+            }
+            if (i == (num_iters - 1))
+                val = -1;
         }
     }
     return NULL;
@@ -146,7 +147,7 @@ int main(int argc, char** argv) {
 
     pthread_t threads[num_threads];
 
-    if (clock_gettime(CLOCK_REALTIME, &start) < 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &start) < 0) {
         fprintf(stderr, "Failed to retrieve time: %s\n", strerror(errno));
         exit(1);
     }
@@ -161,23 +162,17 @@ int main(int argc, char** argv) {
         pthread_join(threads[i], NULL);
     }
 
-    if (clock_gettime(CLOCK_REALTIME, &finish) < 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &finish) < 0) {
         fprintf(stderr, "Failed to retrieve time: %s\n", strerror(errno));
         exit(1);
     }
 
-    long total_time_ns = finish.tv_nsec - start.tv_nsec;
-    int total_ops = num_threads * num_iters * 2;
+    long long unsigned int total_time_ns = 1000000000 * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+    long long unsigned int total_ops = num_threads * num_iters * 2;
 
-    FILE* csv_file = fopen("lab2_add.csv", "a");
-    if (csv_file == NULL) {
-        fprintf(stderr, "Unable to open csv file: %s\n", strerror(errno));
-        exit(1);
-    }
-    fprintf(csv_file, "%s,%d,%d,%d,%ld,%ld,%lld\n", run_type, num_threads, num_iters, total_ops,
-           total_time_ns, total_time_ns/total_ops, counter);
-    printf("%s,%d,%d,%d,%ld,%ld,%lld\n", run_type, num_threads, num_iters, total_ops,
+    printf("%s,%d,%d,%lld,%lld,%lld,%lld\n", run_type, num_threads, num_iters, total_ops,
             total_time_ns, total_time_ns/total_ops, counter);
-
+    if (counter != 0)
+        exit(2);
     exit(0);
 }
