@@ -46,6 +46,23 @@ plot \
      "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7)/(4*($3)) \
 	title '/4 x iterations' with linespoints lc rgb 'green'
 
+# ----------------------------------------------------------------------- MINE
+# Plot total number of operations per second for each sync method.
+set title "Mutex and Spinlock: Aggregate throughput of all threads combined"
+set xlabel "Number of threads"
+set logscale x 10
+set ylabel "Time per operation (ns)"
+set logscale y 10
+set output 'lab2b_1.png'
+
+# grep out only single threaded, un-protected, non-yield results
+plot \
+     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7) \
+	title 'raw' with linespoints lc rgb 'red', \
+     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7)/(4*($3)) \
+	title '/4 x iterations' with linespoints lc rgb 'green'
+
+# ----------------------------------------------------------------------- MINE
 
 set title "List-2: Unprotected Threads and Iterations that run without failure"
 set xlabel "Threads"
