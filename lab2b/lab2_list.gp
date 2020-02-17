@@ -31,58 +31,36 @@
 set terminal png
 set datafile separator ","
 
-# how many threads/iterations we can run without failure (w/o yielding)
-set title "List-1: Cost per Operation vs Iterations"
-set xlabel "Iterations"
-set logscale x 10
-set ylabel "Cost per Operation (ns)"
-set logscale y 10
-set output 'lab2_list-1.png'
-
-# grep out only single threaded, un-protected, non-yield results
-plot \
-     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7) \
-	title 'raw' with linespoints lc rgb 'red', \
-     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7)/(4*($3)) \
-	title '/4 x iterations' with linespoints lc rgb 'green'
-
-# ----------------------------------------------------------------------- MINE
-# Plot total number of operations per second for each sync method.
-set title "Mutex and Spinlock: Aggregate throughput of all threads combined"
-set xlabel "Number of threads"
-set logscale x 10
-set ylabel "Time per operation (ns)"
+# Plot the total number of operations per second by the number of threads
+set title "Plot 1: Aggregate throughput for synchronized list operations"
+set xlabel "Threads"
+set logscale x 2
+set xrange [1:24]
+set ylabel "Operations per second"
 set logscale y 10
 set output 'lab2b_1.png'
 
 # grep out only single threaded, un-protected, non-yield results
 plot \
-     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7) \
-	title 'raw' with linespoints lc rgb 'red', \
-     "< grep 'list-none-none,1,' lab2_list.csv" using ($3):($7)/(4*($3)) \
-	title '/4 x iterations' with linespoints lc rgb 'green'
+     "< grep -e 'list-none-m,[0-9]*,1000' lab2b_list.csv" using ($2):(1000000000/$7) \
+	title 'mutex' with linespoints lc rgb 'red', \
+     "< grep -e 'list-none-s,[0-9]*,1000' lab2b_list.csv" using ($2):(1000000000/$7) \
+	title 'spin locks' with linespoints lc rgb 'green'
 
-# ----------------------------------------------------------------------- MINE
 
-set title "List-2: Unprotected Threads and Iterations that run without failure"
+set title "Plot 2: Wait-for-lock time & average time per operation for mutex threads"
 set xlabel "Threads"
 set logscale x 2
-set xrange [0.75:]
-set ylabel "Successful Iterations"
+set xrange [1:24]
+set ylabel "Time (ns)"
 set logscale y 10
-set output 'lab2_list-2.png'
+set output 'lab2b_2.png'
 # note that unsuccessful runs should have produced no output
 plot \
-     "< grep list-none-none lab2_list.csv" using ($2):($3) \
-	title 'w/o yields' with points lc rgb 'green', \
-     "< grep list-i-none lab2_list.csv" using ($2):($3) \
-	title 'yield=i' with points lc rgb 'red', \
-     "< grep list-d-none lab2_list.csv" using ($2):($3) \
-	title 'yield=d' with points lc rgb 'violet', \
-     "< grep list-il-none lab2_list.csv" using ($2):($3) \
-	title 'yield=il' with points lc rgb 'orange', \
-     "< grep list-dl-none lab2_list.csv" using ($2):($3) \
-	title 'yield=dl' with points lc rgb 'blue'
+     "< grep -e 'list-none-m,[0-9]*,1000' lab2b_list.csv" using ($2):($8) \
+	title 'wait-for-lock time' with linespoints lc rgb 'red', \
+     "< grep -e 'list-none-m,[0-9]*,1000' lab2b_list.csv" using ($2):($7) \
+	title 'average time per operation' with linespoints lc rgb 'blue'
 
 set title "List-3: Protected Iterations that run without failure"
 unset logscale x

@@ -30,4 +30,14 @@ Makefile        - makefile to build program and tarball, supports
                         the csv files
 ------------------------------------------------------------------
 Questions:
-2.3.1:
+
+2.3.1: Most of the cycles spent in the 1 and 2-thread list tests are
+       are being spent on execution of the code.
+
+       Most of the time/cycles for high-thread spin-lock tests are
+       being spent on waiting spinning threads.
+       Most of the time/cycles for high-thread mutex tests are being
+       spent on expensive context switches and checking whether or
+       not a lock is free.
+
+2.3.2:
