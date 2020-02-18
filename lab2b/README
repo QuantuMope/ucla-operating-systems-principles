@@ -37,47 +37,54 @@ Makefile       - makefile to build program and tarball, supports
 ---------------------------------------------------------------------
 Questions:
 
-2.3.1: Most of the cycles spent in the 1 and 2-thread list tests are
-       are being spent on execution of code (linked list operations)
-       rather than locking/spinning. These areas are the most expensive
+2.3.1: Most of the cycles spent in the single thread list tests are
+       being spent on the linked list operations. For the 2-thread list,
+       the cycles are being split between linked list operations and
+       locking/spinning. Consequently, these areas are the most expensive
        parts of the code due to being a critical section protected by
-       a single lock. As the number of threads increases, this results
-       in contention. Consequently, most of the time/cycles for high-thread
-       spin-lock tests are being spent on wasteful spinning. Likewise,
-       most of the time/cycles for high-thread mutex tests are being
-       spent on expensive context switches and checking whether or not
-       a lock is available.
+       a single lock. As the number of threads increases, locking and
+       spinning start to become the most expensive parts as contention
+       increases. With this in mind, most of the time/cycle for high-thread
+       spin-lock tests are being spent on wasteful spinning. As mutex
+       locking does not involve wasteful spinning, most of the time/cycle
+       for high-thread mutex tests are being spent on linked list operations
+       and expensive context switches. Compared to spin-locks, mutexes are
+       more efficient but both are still bottlenecks with only a single
+       resource being available.
 
 2.3.2: The lines of code that consume the most number of cycles are
        the while loops in which the threads are spinning waiting for
        the lock. This operation becomes increasingly expensive as the
        number of threads grow due to the increasing contention for the
-       single resource among threads.
+       single resource among threads. As the number of competing threads
+       increase, the frequency at which the thread holding the lock gets
+       to perform work decreases. This explains the poor scaling of the
+       spin-lock operations.
 
 2.3.3: The average lock-wait time rises dramatically with the number of
        contending threads because each thread must wait for a longer
        average period since each thread is fighting over a single resource.
        On the other hand, the completion time per operation rises less
        dramatically because no matter how many threads are waiting, there
-       will always only be one thread executing in the critical section
+       will always be only one thread executing in the critical section
        which results in the somewhat constant completion rate. The slight
        increase seen in the completion rate can be attributed to the higher
        number of context switches that are necessary as the number of threads
        increases. Following this, it is intuitive to see how wait time per
        operation can be higher and go up faster than the completion time per
        operation. Essentially, since there is only one resource, additional
-       number of threads do not increase the performance of the program. Rather
+       number of threads do not increase the performance of the program. Rather,
        they simply wait to take turns doing the same work a single thread could
        perform.
 
 2.3.4: As the number of lists increases, so does the performance of the
        synchronized methods. This is due to the decrease in contention
-       resultant from the increase in shareable resources.
-       The throughput will continue to increase with the number of lists up
-       to a certain point and then level out as contention for resources
-       becomes more and more scarce. Throughput for an N-way partitioned list
-       compared to a single list with 1/N threads in this case is not equivalent
-       with the partitioned list always performing better. This is due to the
+       resultant from the increase in shareable resources. The throughput
+       will continue to increase with the number of lists up to a certain
+       point and then level out as contention for resources becomes more
+       and more scarce. Throughput for an N-way partitioned list compared
+       to a single list with 1/N threads in this case is not equivalent with
+       the partitioned list always performing better. This is due to the
        addition of parallelism. Whereas the single list can only have at most
        one thread working on it, the N-way partitioned list can have up to
        N-threads working on it in parallel resulting in the performance boost

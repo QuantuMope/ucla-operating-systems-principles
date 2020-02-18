@@ -338,18 +338,18 @@ int main(int argc, char** argv) {
     // Finish timer
     get_time(&finish);
 
+    // Calculate program completion time
+    long long unsigned int total_time_ns = BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+    long long unsigned int total_ops = num_threads * num_iters * 3;
+
     // Calculate average lock wait time
     long long unsigned int avg_lock_time = 0;
     if (opt_sync) {
         for (int i = 0; i < num_threads; i++) {
             avg_lock_time += thread_lock_times[i];
         }
-        avg_lock_time /= num_threads;
+        avg_lock_time /= total_ops;
     }
-
-    // Calculate program completion time
-    long long unsigned int total_time_ns = BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
-    long long unsigned int total_ops = num_threads * num_iters * 3;
 
     // Check to see that list length is zero
     int length = 0;

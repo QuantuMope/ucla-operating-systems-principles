@@ -61,12 +61,13 @@ plot \
 	title 'wait-for-lock time' with linespoints lc rgb 'red', \
      "< grep 'list-none-m,[0-9]*,1000,1,' lab2b_list.csv" using ($2):($7) \
 	title 'average time per operation' with linespoints lc rgb 'blue'
+
 set title "Plot 3: Threads and Iterations that run without failure (4 sub-lists, yield=id)"
 set logscale x 4
 set xrange [1:24]
 set xlabel "Threads"
 set ylabel "Successful Iterations"
-set logscale y 2
+set logscale y 10
 set output 'lab2b_3.png'
 set key left top
 plot \
