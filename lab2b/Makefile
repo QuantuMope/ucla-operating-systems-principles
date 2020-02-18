@@ -2,7 +2,7 @@
 # EMAIL: asjchoi@ucla.edu
 # ID: 205348339
 
-#.SILENT:
+.SILENT:
 
 default: build
 
@@ -15,14 +15,15 @@ clean:
 graphs: tests
 	./lab2b_list.gp
 
-dist: graphs profile
+dist: graphs
 	tar -zcvf lab2b-205348339.tar.gz lab2_list.c SortedList.c SortedList.h lab2b_list.csv \
 									 lab2b_1.png lab2b_2.png lab2b_3.png lab2b_4.png lab2b_5.png \
 									 lab2b_list.gp profile.out Makefile README
 
-profile:
+profile: build
 	env CPUPROFILE=lab2b.prof ./lab2_list --t 12 --i 1000 --s s
-	pprof --list=thread_list_ops ./lab2_list lab2b.prof >> profile.out
+	pprof --text ./lab2_list lab2b.prof > profile.out
+	pprof --list=spin_lock_and_time ./lab2_list lab2b.prof >> profile.out
 	rm -rf lab2b.prof
 
 tests: build

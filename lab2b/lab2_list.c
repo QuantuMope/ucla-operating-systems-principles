@@ -6,18 +6,20 @@
 
 #define BIL 1000000000ULL
 
+
 int num_threads = 1;
 int num_iters = 1;
+int num_lists = 1;
 int opt_yield = 0;
-int opt_sync = 0; // 1:m 2:s 3: c
+int opt_sync = 0; // 1:m 2:s
+int thread_exit = 0;
+char run_type[20] = "list-";
+long long unsigned int* thread_lock_times;
+
 pthread_mutex_t* m_locks;
 volatile int* s_locks;
-char run_type[20] = "list-";
 SortedList_t* headers;
 SortedListElement_t* elements;
-int thread_exit = 0;
-long long unsigned int* thread_lock_times;
-int num_lists = 1;
 
 void catch_segfault() {
     fprintf(stderr, "Segfault experienced due to corrupted list.\n");
@@ -42,7 +44,7 @@ void process_command_line(int argc, char** argv) {
         switch (c) {
             case '?':
                 fprintf(stderr, "Invalid argument. Valid arguments include --t=# --i=#"
-                                " --y=[idl] --s=[m|s]\n");
+                                " --l=# --y=[idl] --s=[m|s]\n");
                 exit(1);
             case 't':
                 if ((num_threads = atoi(optarg)) == 0)
@@ -124,6 +126,7 @@ void process_command_line(int argc, char** argv) {
     }
 }
 
+// Get time function for code brevity
 void get_time(struct timespec* record) {
     if (clock_gettime(CLOCK_MONOTONIC, record) < 0) {
         fprintf(stderr, "Failed to retrieve time: %s\n", strerror(errno));
@@ -131,6 +134,7 @@ void get_time(struct timespec* record) {
     }
 }
 
+// Locks desired mutex lock and returns the time spent waiting in ns
 long long unsigned int lock_and_time(pthread_mutex_t* m_lock) {
     struct timespec start, finish;
     get_time(&start);
@@ -139,6 +143,7 @@ long long unsigned int lock_and_time(pthread_mutex_t* m_lock) {
     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
 }
 
+// Locks desired spin lock and returns the time spent waiting in ns
 long long unsigned int spin_lock_and_time(volatile int* s_lock) {
     struct timespec start, finish;
     get_time(&start);
@@ -147,6 +152,7 @@ long long unsigned int spin_lock_and_time(volatile int* s_lock) {
     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
 }
 
+// Thread safe get length function for partitioned lists
 int get_length(int id) {
     int len = 0;
     int length = 0;
@@ -173,6 +179,7 @@ void* thread_list_ops(void* input) {
     int end = begin + num_iters;
     int id = begin / num_iters;
     int hash;
+    // Unprotected
     if (opt_sync == 0) {
         for (int i = begin; i < end; i++) {
             hash = *(elements[i].key) % num_lists;
@@ -195,6 +202,7 @@ void* thread_list_ops(void* input) {
             }
         }
     }
+    // Mutex-synchronized
     else if (opt_sync == 1) {
         for (int i = begin; i < end; i++) {
             hash = *(elements[i].key) % num_lists;
@@ -225,6 +233,7 @@ void* thread_list_ops(void* input) {
             pthread_mutex_unlock(m_locks+hash);
         }
     }
+    // Spin-lock synchronized
     else {
         for (int i = begin; i < end; i++) {
             hash = *(elements[i].key) % num_lists;
@@ -268,15 +277,20 @@ int main(int argc, char** argv) {
     int num_ops = num_threads * num_iters;
     struct timespec start, finish;
 
-    pthread_t threads[num_threads];
-    thread_lock_times = malloc(num_threads*sizeof(long long unsigned int));
+    // Initialize locks (does both for simplicity)
     s_locks = malloc(num_lists * sizeof(volatile int));
     m_locks = malloc(num_lists * sizeof(pthread_mutex_t));
+
+    // Initialize per thread lock times to zero and offsets
+    thread_lock_times = malloc(num_threads*sizeof(long long unsigned int));
+    int offsets[num_threads];
     for (int i = 0; i < num_threads; i++) {
         thread_lock_times[i] = 0;
+        offsets[i] = i * num_iters;
     }
 
-    // Initialize all headers.
+    // Initialize list heads and threads
+    pthread_t threads[num_threads];
     headers = malloc(num_lists * sizeof(SortedList_t));
     for (int i = 0; i < num_lists; i++) {
         headers[i].prev = headers+i;
@@ -286,8 +300,8 @@ int main(int argc, char** argv) {
         s_locks[i] = 0;
     }
 
+    // Initialize list elements
     elements = malloc(num_ops * sizeof(SortedListElement_t));
-
     char* rand_keys[num_ops];
     for (int i = 0; i < num_ops; i++) {
         rand_keys[i] = malloc(2*sizeof(char));
@@ -296,15 +310,10 @@ int main(int argc, char** argv) {
         elements[i].key = rand_keys[i];
     }
 
-    int offsets[num_threads];
-    for (int i = 0; i < num_threads; i++) {
-        offsets[i] = i * num_iters;
-    }
-
-    // Start timer.
+    // Start timer
     get_time(&start);
 
-    // Create threads.
+    // Create threads
     for (int i = 0; i < num_threads; i++) {
         if (pthread_create(threads+i, NULL, &thread_list_ops, (void*)(offsets+i)) != 0) {
             fprintf(stderr, "Creating thread number %d failed.\n", i);
@@ -312,7 +321,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Wait for all threads to complete.
+    // Wait for all threads to complete
     for (int i = 0; i < num_threads; i++) {
         if (pthread_join(threads[i], NULL) != 0) {
             fprintf(stderr, "Failed to join thread number %d.\n", i);
@@ -320,12 +329,16 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Check for list corruption
     if (thread_exit) {
         fprintf(stderr, "Doubly linked list was corrupted.\n");
         exit(2);
     }
 
+    // Finish timer
     get_time(&finish);
+
+    // Calculate average lock wait time
     long long unsigned int avg_lock_time = 0;
     if (opt_sync) {
         for (int i = 0; i < num_threads; i++) {
@@ -333,9 +346,12 @@ int main(int argc, char** argv) {
         }
         avg_lock_time /= num_threads;
     }
+
+    // Calculate program completion time
     long long unsigned int total_time_ns = BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
     long long unsigned int total_ops = num_threads * num_iters * 3;
 
+    // Check to see that list length is zero
     int length = 0;
     for (int i = 0; i < num_lists; i++)
         length += SortedList_length(headers+i);
@@ -344,6 +360,7 @@ int main(int argc, char** argv) {
         exit(2);
     }
 
+    // Print output
     printf("%s,%d,%d,%d,%lld,%lld,%lld,%lld\n", run_type, num_threads, num_iters, num_lists,
             total_ops, total_time_ns, total_time_ns/total_ops, avg_lock_time);
 

@@ -4,40 +4,81 @@ ID: 205348339
 
 -------------------------------------------------------------------
 Included files:
-lab2_list.c     - C source module for linked list operation threading
-SortedList.c    - C source module for all linked list operations
-SortedList.h    - Header file for SortedList.c
-lab2_list.csv   - Csv file containing data from list runs
-lab2_list.gp    - Gnuplot script that plots various graphs shown below
-lab2_list-1.png - Average time per (single threaded) unprotected
-                  operation vs. number of iterations
-lab2_list-2.png - Threads and iterations required to generate
-                  a failure w/ and w/o yields
-lab2_list-3.png - Iterations that can run protected without failure
-lab2_list-4.png - Length-adjusted cost per operation vs. the number
-                  of threads for the various sync options.
-README          - description of all included files as well as answers
-                  to the project questions
-Makefile        - makefile to build program and tarball, supports
-                  the following commands:
-          make        - build the lab1a executable
-          make clean  - remove any files created by the Makefile
-          make dist   - build a tarball lab2a-205348339.tar.gz
-                      - containing all included files
-          make tests  - Conduct over 200 test cases and save the
-                      - results in csv files
-          make graphs - Create gnu plots using data obtained from
+lab2_list.c    - C source module for linked list operation threading
+SortedList.c   - C source module for all linked list operations
+SortedList.h   - Header file for SortedList.c
+lab2b_list.csv - Csv file containing data from list runs
+lab2b_list.gp  - Gnuplot script that plots the various graphs shown below
+lab2b_1.png    - Throughput vs. number of threads for mutex and spin-lock
+                 synchronized list operations
+lab2b_2.png    - Mean time per mutex wait and mean time per operation
+                 for mutex-synchronized list operations
+lab2b_3.png    - Successful iterations vs. threads for each synch method
+lab2b_4.png    - Throughput vs. number of threads for mutex synchronized
+                 partitioned lists
+lab2b_5.png    - Throughput vs. number of threads for spin-lock synchronized
+                 partitioned lists
+profile.out    - Execution profiling report showing where time is spent
+                 during un-partitioned spin-lock
+README         - description of all included files as well as answers
+                 to the project questions
+Makefile       - makefile to build program and tarball, supports
+                 the following commands:
+         make         - build the lab2_list executable
+         make clean   - remove any files created by the Makefile
+         make dist    - build a tarball lab2b-205348339.tar.gz
+                        containing all included files
+         make tests   - Conduct all necessary test cases and save the
+                        results in csv files
+         make graphs  - Create gnu plots using data obtained from
                         the csv files
-------------------------------------------------------------------
+         make profile - run tests with profiling tools to generate
+                        profiling report of spin-lock operations
+---------------------------------------------------------------------
 Questions:
 
 2.3.1: Most of the cycles spent in the 1 and 2-thread list tests are
-       are being spent on execution of the code.
+       are being spent on execution of code (linked list operations)
+       rather than locking/spinning. These areas are the most expensive
+       parts of the code due to being a critical section protected by
+       a single lock. As the number of threads increases, this results
+       in contention. Consequently, most of the time/cycles for high-thread
+       spin-lock tests are being spent on wasteful spinning. Likewise,
+       most of the time/cycles for high-thread mutex tests are being
+       spent on expensive context switches and checking whether or not
+       a lock is available.
 
-       Most of the time/cycles for high-thread spin-lock tests are
-       being spent on waiting spinning threads.
-       Most of the time/cycles for high-thread mutex tests are being
-       spent on expensive context switches and checking whether or
-       not a lock is free.
+2.3.2: The lines of code that consume the most number of cycles are
+       the while loops in which the threads are spinning waiting for
+       the lock. This operation becomes increasingly expensive as the
+       number of threads grow due to the increasing contention for the
+       single resource among threads.
 
-2.3.2:
+2.3.3: The average lock-wait time rises dramatically with the number of
+       contending threads because each thread must wait for a longer
+       average period since each thread is fighting over a single resource.
+       On the other hand, the completion time per operation rises less
+       dramatically because no matter how many threads are waiting, there
+       will always only be one thread executing in the critical section
+       which results in the somewhat constant completion rate. The slight
+       increase seen in the completion rate can be attributed to the higher
+       number of context switches that are necessary as the number of threads
+       increases. Following this, it is intuitive to see how wait time per
+       operation can be higher and go up faster than the completion time per
+       operation. Essentially, since there is only one resource, additional
+       number of threads do not increase the performance of the program. Rather
+       they simply wait to take turns doing the same work a single thread could
+       perform.
+
+2.3.4: As the number of lists increases, so does the performance of the
+       synchronized methods. This is due to the decrease in contention
+       resultant from the increase in shareable resources.
+       The throughput will continue to increase with the number of lists up
+       to a certain point and then level out as contention for resources
+       becomes more and more scarce. Throughput for an N-way partitioned list
+       compared to a single list with 1/N threads in this case is not equivalent
+       with the partitioned list always performing better. This is due to the
+       addition of parallelism. Whereas the single list can only have at most
+       one thread working on it, the N-way partitioned list can have up to
+       N-threads working on it in parallel resulting in the performance boost
+       seen in the plotted curves.

@@ -1,0 +1,52 @@
+Total: 1070 samples
+     929  86.8%  86.8%      930  86.9% spin_lock_and_time
+      80   7.5%  94.3%       80   7.5% SortedList_insert
+      59   5.5%  99.8%       59   5.5% SortedList_lookup
+       1   0.1%  99.9%        1   0.1% 0x00007ffc847bd8e5
+       1   0.1% 100.0%     1070 100.0% thread_list_ops
+       0   0.0% 100.0%     1070 100.0% ?? /usr/src/debug////////glibc-2.17-c758a686/misc/../sysdeps/unix/sysv/linux/x86_64/clone.S:111
+       0   0.0% 100.0%        1   0.1% __GI___clock_gettime
+       0   0.0% 100.0%        1   0.1% get_time
+       0   0.0% 100.0%     1070 100.0% start_thread
+ROUTINE ====================== spin_lock_and_time in /u/cs/grad/sangjin/Desktop/cs111/lab2b/lab2_list.c
+   929    930 Total samples (flat / cumulative)
+     .      .  137:     pthread_mutex_lock(m_lock);
+     .      .  138:     get_time(&finish);
+     .      .  139:     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+     .      .  140: }
+     .      .  141: 
+---
+     .      .  142: long long unsigned int spin_lock_and_time(volatile int* s_lock) {
+     .      .  143:     struct timespec start, finish;
+     .      .  144:     get_time(&start);
+   927    927  145:     while (__sync_lock_test_and_set(s_lock, 1));
+     1      2  146:     get_time(&finish);
+     1      1  147:     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+     .      .  148: }
+---
+     .      .  149: 
+     .      .  150: int get_length(int id) {
+     .      .  151:     int len = 0;
+     .      .  152:     int length = 0;
+     .      .  153:     for (int i = 0; i < num_lists; i++) {
+ROUTINE ====================== spin_lock_and_time in /u/cs/grad/sangjin/Desktop/cs111/lab2b/lab2_list.c
+   929    930 Total samples (flat / cumulative)
+     .      .  137:     pthread_mutex_lock(m_lock);
+     .      .  138:     get_time(&finish);
+     .      .  139:     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+     .      .  140: }
+     .      .  141: 
+---
+     .      .  142: long long unsigned int spin_lock_and_time(volatile int* s_lock) {
+     .      .  143:     struct timespec start, finish;
+     .      .  144:     get_time(&start);
+   927    927  145:     while (__sync_lock_test_and_set(s_lock, 1));
+     1      2  146:     get_time(&finish);
+     1      1  147:     return BIL * (finish.tv_sec - start.tv_sec) + finish.tv_nsec - start.tv_nsec;
+     .      .  148: }
+---
+     .      .  149: 
+     .      .  150: int get_length(int id) {
+     .      .  151:     int len = 0;
+     .      .  152:     int length = 0;
+     .      .  153:     for (int i = 0; i < num_lists; i++) {
