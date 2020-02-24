@@ -3,6 +3,8 @@
 #include <math.h>
 #include <signal.h>
 #include <sys/poll.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 #include <time.h>
@@ -11,16 +13,22 @@
 #include <mraa/gpio.h>
 
 sig_atomic_t volatile run_flag = 1;
+int off = 0;
 const int B  = 4275;
 const int R0 = 100000;
+FILE* log_file = NULL;
 
-void button_interrupt() {
+void button_and_off_interrupt() {
     time_t raw_time;
     struct tm* curr_time;
     time(&raw_time);
     curr_time = localtime(&raw_time);
-    printf("%d:%d:%d SHUTDOWN\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec);
+    printf("%02d:%02d:%02d SHUTDOWN\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec);
+    if (log_file != NULL) {
+        fprintf(log_file, "%02d:%02d:%02d SHUTDOWN\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec);
+    }
     run_flag = 0;
+    off = 1;
 }
 
 void key_interrupt(int sig) {
@@ -43,7 +51,6 @@ int main(int argc, char**argv) {
     int option_index = 0;
     int period = 1;
     char scale = 'F';
-    int log_fd = NULL;
     static struct option long_options[] = {
         {"period", required_argument, 0, 'p'},
         {"scale",  required_argument, 0, 's'},
@@ -70,8 +77,8 @@ int main(int argc, char**argv) {
                 }
                 break;
             case 'l':
-                if ((log_fd = creat(optarg, 0666)) < 0) {
-                    fprintf(stderr, "Failed to create/open file %s: %s\n", optarg, strerror(errno));
+                if ((log_file = fopen(optarg, "w+")) == NULL) {
+                    fprintf(stderr, "Failed to initialize file pointer: %s\n", strerror(errno));
                     exit(1);
                 }
                 break;
@@ -91,12 +98,18 @@ int main(int argc, char**argv) {
     mraa_gpio_context button;
     temp_sensor = mraa_aio_init(1);
     button = mraa_gpio_init(60);
-    mraa_gpio_dir(button, MRAA_GPIO_IN);
-    mraa_gpio_isr(button, MRAA_GPIO_EDGE_RISING, &button_interrupt, NULL);
-    if (temp_sensor == NULL) {
-        printf("Error initializing temperature sensor\n");
+
+    if (button == NULL) {
+        fprintf(stderr, "Error initializing button\n");
         exit(1);
     }
+    if (temp_sensor == NULL) {
+        fprintf(stderr, "Error initializing temperature sensor\n");
+        exit(1);
+    }
+
+    mraa_gpio_dir(button, MRAA_GPIO_IN);
+    mraa_gpio_isr(button, MRAA_GPIO_EDGE_RISING, &button_and_off_interrupt, NULL);
 
     struct pollfd poll_list;
     poll_list.fd = 0;
@@ -104,12 +117,17 @@ int main(int argc, char**argv) {
 
     time_t raw_time;
     struct tm* curr_time;
+    struct timespec start, finish;
+    clock_gettime(CLOCK_MONOTONIC, &start);
 
     char read_buf[512] = {0};
     char command_buf[512] = {0};
-    int offset = 0;
     int length = 0;
+    int add = 0;
+    int offset = 0;
     int count;
+    int generate_reports = 1;
+    int i;
 
     float temp;
     while (run_flag) {
@@ -119,27 +137,76 @@ int main(int argc, char**argv) {
         }
 
         if (poll_list.revents & POLLIN) {
-            if ((count = read(0, read_buf, 512)) < 0) {
+            if ((count = read(0, &read_buf, 512)) < 0) {
                 fprintf(stderr, "Reading from stdin failed: %s\n", strerror(errno));
                 exit(1);
             }
-            for (int i = 0; i < count; i++) {
+            add = count;
+            for (i = 0; i < count; i++) {
                 if (read_buf[i] == '\n') {
-                    command_buf[length+i] = '\0';
+                    char period_check[8] = {0};
+                    char log_check[5] = {0};
+                    strncpy(period_check, command_buf, 7);
+                    strncpy(log_check, command_buf, 4);
+                    if (strcmp(command_buf, "SCALE=F") == 0) {
+                        scale = 'F';
+                    }
+                    else if (strcmp(command_buf, "SCALE=C") == 0) {
+                        scale = 'C';
+                    }
+                    else if (strcmp(period_check, "PERIOD=") == 0) {
+                        period = atoi(command_buf+7);
+                    }
+                    else if (strcmp(command_buf, "STOP") == 0) {
+                        generate_reports = 0;
+                    }
+                    else if (strcmp(command_buf, "START") == 0) {
+                        generate_reports = 1;
+                    }
+                    else if (strcmp(log_check, "LOG ") == 0) {
+                        ; // Will need for lab4c
+                    }
+                    else if (strcmp(command_buf, "OFF") == 0) {
+                        if (log_file != NULL)
+                            fprintf(log_file, "OFF\n");
+                        button_and_off_interrupt();
+                        break;
+                    }
+                    if (log_file != NULL) {
+                        fprintf(log_file, command_buf);
+                        fprintf(log_file, "\n");
+                    }
 
-                }
-                command_buf[length+i] = read_buf[i];
+                    // Clear and reset command buffer after a \n
+                    length = 0;
+                    memset(command_buf, '\0', 512);
+
+                    // After a command, set offset for correct indexing if read buffer
+                    // has multiple commands
+                    offset = i + 1;
+
+                    // Reduce the length by the completed command
+                    add = count - (i + 1);
+             } // Add from read buffer to the command buffer
+                command_buf[length+i-offset] = read_buf[i];
             }
-            strcpy(command_buf+length, read_buf);
-            length += offset;
+            // Add to the length by the length of the incomplete command if it exists
+            length += add;
+            offset = add = 0;
         }
-
-        time(&raw_time);
-        curr_time = localtime(&raw_time);
-
-        temp = convert_read_to_temp(mraa_aio_read(temp_sensor), scale);
-        printf("%d:%d:%d %0.1f\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec, temp);
-        sleep(period);
+        if (off)
+            break;
+        
+        clock_gettime(CLOCK_MONOTONIC, &finish);
+        if (generate_reports && ((int)(finish.tv_sec - start.tv_sec) >= period)) {
+            time(&raw_time);
+            curr_time = localtime(&raw_time);
+            temp = convert_read_to_temp(mraa_aio_read(temp_sensor), scale);
+            printf("%02d:%02d:%02d %0.1f\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec, temp);
+            if (log_file != NULL)
+                fprintf(log_file, "%02d:%02d:%02d %0.1f\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec, temp);
+            clock_gettime(CLOCK_MONOTONIC, &start);
+        }
     }
 
     mraa_aio_close(temp_sensor);
