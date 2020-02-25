@@ -1,3 +1,7 @@
+// NAME: Andrew Choi
+// EMAIL: asjchoi@ucla.edu
+// ID: 205348339
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -12,12 +16,12 @@
 #include <mraa/aio.h>
 #include <mraa/gpio.h>
 
-sig_atomic_t volatile run_flag = 1;
-int off = 0;
+int run_flag = 1;
 const int B  = 4275;
 const int R0 = 100000;
 FILE* log_file = NULL;
 
+// Shutdown code. Enabled from button and OFF command
 void button_and_off_interrupt() {
     time_t raw_time;
     struct tm* curr_time;
@@ -28,7 +32,6 @@ void button_and_off_interrupt() {
         fprintf(log_file, "%02d:%02d:%02d SHUTDOWN\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec);
     }
     run_flag = 0;
-    off = 1;
 }
 
 void key_interrupt(int sig) {
@@ -36,6 +39,7 @@ void key_interrupt(int sig) {
         run_flag = 0;
 }
 
+// Convert sensor reading into (C or F) temperature reading
 float convert_read_to_temp(int read, char scale) {
     float R = 1023.0/read-1.0;
     R = R0 * R;
@@ -91,6 +95,7 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
+    // Allow for Ctrl+C keyboard interrupt
     signal(SIGINT, key_interrupt);
 
     // Initialize sensors
@@ -99,6 +104,7 @@ int main(int argc, char**argv) {
     temp_sensor = mraa_aio_init(1);
     button = mraa_gpio_init(60);
 
+    // Check for successful sensor connections
     if (button == NULL) {
         fprintf(stderr, "Error initializing button\n");
         exit(1);
@@ -108,9 +114,11 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
+    // Set button as a gpio input and check for rising edge signal
     mraa_gpio_dir(button, MRAA_GPIO_IN);
     mraa_gpio_isr(button, MRAA_GPIO_EDGE_RISING, &button_and_off_interrupt, NULL);
 
+    // Poll standard input
     struct pollfd poll_list;
     poll_list.fd = 0;
     poll_list.events = POLLIN;
@@ -118,8 +126,6 @@ int main(int argc, char**argv) {
     time_t raw_time;
     struct tm* curr_time;
     struct timespec start, finish;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-
     char read_buf[512] = {0};
     char command_buf[512] = {0};
     int length = 0;
@@ -127,9 +133,18 @@ int main(int argc, char**argv) {
     int offset = 0;
     int count;
     int generate_reports = 1;
-    int i;
-
+    int i;  // for loop variable
     float temp;
+
+    // Perform one read right away and start interval timer
+    time(&raw_time);
+    curr_time = localtime(&raw_time);
+    temp = convert_read_to_temp(mraa_aio_read(temp_sensor), scale);
+    printf("%02d:%02d:%02d %0.1f\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec, temp);
+    if (log_file != NULL)
+        fprintf(log_file, "%02d:%02d:%02d %0.1f\n", curr_time->tm_hour, curr_time->tm_min, curr_time->tm_sec, temp);
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     while (run_flag) {
         if (poll(&poll_list, 1, 0) < 0) {
             fprintf(stderr, "Polling has failed: %s\n", strerror(errno));
@@ -148,6 +163,8 @@ int main(int argc, char**argv) {
                     char log_check[5] = {0};
                     strncpy(period_check, command_buf, 7);
                     strncpy(log_check, command_buf, 4);
+
+                    // Check for valid commands
                     if (strcmp(command_buf, "SCALE=F") == 0) {
                         scale = 'F';
                     }
@@ -172,6 +189,8 @@ int main(int argc, char**argv) {
                         button_and_off_interrupt();
                         break;
                     }
+
+                    // Log all commands valid or invalid if enabled
                     if (log_file != NULL) {
                         fprintf(log_file, command_buf);
                         fprintf(log_file, "\n");
@@ -181,22 +200,26 @@ int main(int argc, char**argv) {
                     length = 0;
                     memset(command_buf, '\0', 512);
 
-                    // After a command, set offset for correct indexing if read buffer
-                    // has multiple commands
+                    // After a command, set offset for correct indexing if read buffer has multiple commands
                     offset = i + 1;
 
                     // Reduce the length by the completed command
                     add = count - (i + 1);
-             } // Add from read buffer to the command buffer
+                }
+                // Add from read buffer to the command buffer
                 command_buf[length+i-offset] = read_buf[i];
             }
-            // Add to the length by the length of the incomplete command if it exists
+            // Add the length of the incomplete command if it exists
             length += add;
             offset = add = 0;
         }
-        if (off)
+
+        // Avoid reporting if shutdown enabled
+        if (!run_flag)
             break;
-        
+
+        // Measure reporting intervals using clock_gettime() rather than using sleep()
+        // This allows the program to immediately process and respond to sent commands
         clock_gettime(CLOCK_MONOTONIC, &finish);
         if (generate_reports && ((int)(finish.tv_sec - start.tv_sec) >= period)) {
             time(&raw_time);
@@ -209,8 +232,15 @@ int main(int argc, char**argv) {
         }
     }
 
-    mraa_aio_close(temp_sensor);
-    mraa_gpio_close(button);
+    // Close sensors
+    if (mraa_aio_close(temp_sensor) != MRAA_SUCCESS) {
+        fprintf(stderr, "Failed to close temperature sensor\n");
+        exit(1);
+    }
+    if (mraa_gpio_close(button) != MRAA_SUCCESS) {
+        fprintf(stderr, "Failed to close button\n");
+        exit(1);
+    }
 
     exit(0);
 }

@@ -1,5 +1,6 @@
 ## Operating System Principles
 
+---
 @ UCLA, Winter 2020 <br>
 @ Instructor: [Harry Xu](http://web.cs.ucla.edu/~harryxu/)
 ---
