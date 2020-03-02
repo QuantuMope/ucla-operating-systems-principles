@@ -85,29 +85,30 @@ void scan_indirect_ptrs(int inode_no, int level, int prev_block_no, int log_offs
     int block_offset;
     int blocks_per_1 = bsize / sizeof(block_no);
     int blocks_per_2 = blocks_per_1 * blocks_per_1;
+    int new_log_offset;
     for (int i = 0; i < bsize; i+=sizeof(block_no)) {
         if (pread(fs_fd, &block_no, sizeof(block_no), prev_block_no*bsize + i) < 0) {
             fprintf(stderr, "Failed to read level %d pointer: %s\n", level, strerror(errno));
             exit(1);
         }
         if (block_no != 0) {
-            block_offset = i/4;
+	    block_offset = i/4;
             switch (level) {
                 case 1:
-                    log_offset += block_offset;
+                    new_log_offset = log_offset + block_offset;
                     break;
                 case 2:
-                    log_offset += block_offset * blocks_per_1;
+                    new_log_offset = log_offset + block_offset * blocks_per_1;
                     break;
                 case 3:
-                    log_offset += block_offset * blocks_per_2;
+                    new_log_offset = log_offset + block_offset * blocks_per_2;
             }
             printf("INDIRECT,%d,%d,%d,%d,%d\n", inode_no,
                                                 level,
-                                                log_offset,
+                                                new_log_offset,
                                                 prev_block_no,
                                                 block_no);
-            scan_indirect_ptrs(inode_no, level-1, block_no, log_offset, file_type);
+            scan_indirect_ptrs(inode_no, level-1, block_no, new_log_offset, file_type);
         }
     }
 }
