@@ -1,0 +1,16 @@
+NAME: Andrew Choi
+EMAIL: asjchoi@ucla.edu
+ID: 205348339
+
+-------------------------------------------------------------------
+Included files:
+lab4b.c  - C source module
+README   - description of all included files
+Makefile - makefile to build program and tarball, supports
+           the following commands:
+           make         - build the lab4b executable
+           make clean   - remove any files created by the Makefile
+           make check   - smoke test to check for proper sensor
+                          connection
+           make dist    - build a tarball lab4b-205348339.tar.gz
+                          containing all included files
