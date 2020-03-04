@@ -2,15 +2,24 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
+lab3a - Program scans and analyzes an EXT2 file system.
+        Outputs information on the superblock, block groups,
+        free block and inode entries, inodes, directories,
+        and indirect block references.
+
 -------------------------------------------------------------------
 Included files:
-lab4b.c  - C source module
-README   - description of all included files
-Makefile - makefile to build program and tarball, supports
-           the following commands:
-           make         - build the lab4b executable
-           make clean   - remove any files created by the Makefile
-           make check   - smoke test to check for proper sensor
-                          connection
-           make dist    - build a tarball lab4b-205348339.tar.gz
-                          containing all included files
+lab3a.c   - C source module
+ext2_fs.h - header file containing EXT2 data structure definitions
+README    - description of all included files
+Makefile  - makefile to build program and tarball, supports
+            the following commands:
+            make         - build the lab3a executable
+            make clean   - remove any files created by the Makefile
+            make dist    - build a tarball lab3a-205348339.tar.gz
+                           containing all included files
+
+-------------------------------------------------------------------
+References
+Utilized the following EXT2 file system documentation extensively.
+https://www.nongnu.org/ext2-doc/ext2.html

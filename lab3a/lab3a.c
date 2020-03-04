@@ -1,3 +1,7 @@
+// NAME: Andrew Choi
+// EMAIL: asjchoi@ucla.edu
+// ID: 205348339
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -10,10 +14,6 @@
 #include <math.h>
 #include <time.h>
 #include "ext2_fs.h"
-
-/*
-    Assumption from spec: Group size is 1
-*/
 
 #define SB_OFFSET 1024
 
@@ -46,46 +46,53 @@ void scan_block_bitmap(int num_blocks) {
 void print_directory_entries(int inode_no, int offset) {
     struct ext2_dir_entry dir_entry;
     int bytes = 0;
+    // Read all directory entries in the block.
     while (bytes < bsize) {
         if (pread(fs_fd, &dir_entry, sizeof(dir_entry), offset + bytes) < 0) {
             fprintf(stderr, "Failed to read directory entry: %s\n", strerror(errno));
             exit(1);
         }
-        if (dir_entry.inode != 0)
-            printf("DIRENT,%d,%d,%d,%d,%d,\'%s\'\n", inode_no,
-                                                     bytes,
-                                                     dir_entry.inode,
-                                                     dir_entry.rec_len,
-                                                     dir_entry.name_len,
-                                                     dir_entry.name);
+        if (dir_entry.inode != 0) {
+            printf("DIRENT,%d,%d,%d,%d,%d,'", inode_no,
+                   bytes,
+                   dir_entry.inode,
+                   dir_entry.rec_len,
+                   dir_entry.name_len);
+            // Make sure to print out only up to the name length
+            for (uint8_t i = 0; i < dir_entry.name_len; i++)
+                printf("%c", dir_entry.name[i]);
+            printf("'\n");
+        }
+        // Next directory entry is rec_len bytes away
         bytes += dir_entry.rec_len;
     }
 }
 
 void scan_direct_directories(int inode_no, int offset) {
+    // Scans directory entries in direct pointers.
+    // Indirect pointer directory entries are taken care of in scan_indirect_ptrs function
     int block_no;
     for (int i = 0; i < EXT2_NDIR_BLOCKS; i++) {
         if (pread(fs_fd, &block_no, sizeof(block_no), offset + (i*sizeof(block_no))) < 0) {
             fprintf(stderr, "Failed to read block pointer: %s\n", strerror(errno));
             exit(1);
         }
-        if (block_no != 0) {
+        if (block_no != 0)
             print_directory_entries(inode_no, block_no*bsize);
-        }
     }
 }
 
 void scan_indirect_ptrs(int inode_no, int level, int prev_block_no, int log_offset, char file_type) {
     if (level == 0) {
-        if (file_type == 'c')
-            print_directory_entries(inode_no, prev_block_no * bsize);   
+        // Scan directory entries referenced by indirect pointers
+        if (file_type == 'd')
+            print_directory_entries(inode_no, prev_block_no * bsize);
         return;
     }
-    int block_no;
-    int block_offset;
+    int block_no, block_offset, new_log_offset;
     int blocks_per_1 = bsize / sizeof(block_no);
     int blocks_per_2 = blocks_per_1 * blocks_per_1;
-    int new_log_offset;
+
     for (int i = 0; i < bsize; i+=sizeof(block_no)) {
         if (pread(fs_fd, &block_no, sizeof(block_no), prev_block_no*bsize + i) < 0) {
             fprintf(stderr, "Failed to read level %d pointer: %s\n", level, strerror(errno));
@@ -108,6 +115,8 @@ void scan_indirect_ptrs(int inode_no, int level, int prev_block_no, int log_offs
                                                 new_log_offset,
                                                 prev_block_no,
                                                 block_no);
+
+            // Recurse to the lower level of indirect pointers or data blocks
             scan_indirect_ptrs(inode_no, level-1, block_no, new_log_offset, file_type);
         }
     }
@@ -125,7 +134,7 @@ void scan_inode(int inode_no) {
         return;
 
     // Get the file type
-    char file_type;
+    char file_type = '?';
     int mode_mask = inode.i_mode & 0xF000;
     if (mode_mask == 0x8000)
         file_type = 'f';
@@ -133,8 +142,6 @@ void scan_inode(int inode_no) {
         file_type = 'd';
     else if (mode_mask == 0xA000)
         file_type = 's';
-    else
-        file_type = '?';
 
     // Get the inode times translated
     char times[3][40] = {0};
@@ -171,7 +178,7 @@ void scan_inode(int inode_no) {
     }
     printf("\n");
 
-    // Print the directories from direct ptrs
+    // Print the directories from direct pointers. Pointers are located 40 bytes into struct
     if (file_type == 'd')
         scan_direct_directories(inode_no, offset+40); 
     // Recurse through all indirect pointers for files and directories
@@ -220,6 +227,9 @@ void scan_groups() {
             fprintf(stderr, "Failed to read group descriptor data: %s\n", strerror(errno));
             exit(1);
         }
+
+        // likewise num_blocks and num_inodes will always be sb.s_blocks_count and sb.s_inodes_count respectively
+        // during tests due to num_groups always equaling one
         num_blocks = ((i + 1 == num_groups) && (sb.s_blocks_count % sb.s_blocks_per_group != 0)) ? \
                      sb.s_blocks_count % sb.s_blocks_per_group : sb.s_blocks_per_group;
 
@@ -240,7 +250,7 @@ void scan_groups() {
 }
 
 void scan_file_system() {
-    // Start with scanning the superblock.
+    // Start with scanning the super block.
     if (pread(fs_fd, &sb, sizeof(sb), SB_OFFSET) < 0) {
         fprintf(stderr, "Failed to read super block data: %s\n", strerror(errno));
         exit(1);
@@ -250,6 +260,7 @@ void scan_file_system() {
         exit(1);
     }
     bsize = EXT2_MIN_BLOCK_SIZE << sb.s_log_block_size;
+
     // num_groups will always be 1 for this assignment.
     num_groups = ceil((double)sb.s_blocks_count / sb.s_blocks_per_group);
     printf("SUPERBLOCK,%d,%d,%d,%d,%d,%d,%d\n", sb.s_blocks_count,
@@ -272,7 +283,7 @@ int main(int argc, char** argv) {
     }
 
     if ((fs_fd = open(argv[1], O_RDONLY)) < 0)  {
-        fprintf(stderr, "Failed to open the file system.\n");
+        fprintf(stderr, "Failed to open the file system %s: %s\n", argv[1], strerror(errno));
         exit(1);
     }
 

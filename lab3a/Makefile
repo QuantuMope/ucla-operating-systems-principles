@@ -6,7 +6,7 @@
 
 default: build
 
-build: clean
+build:
 	gcc -Wall -Wextra lab3a.c -lm -o lab3a 
 
 clean:
