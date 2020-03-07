@@ -140,17 +140,14 @@ def check_directory_validity(inodes, total_inodes, directories, inode_free_list)
     for directory in directories:
         parent_no = int(directory[1])
         inode_no = int(directory[3])
+        name = directory[6]
         if inode_no < 1 or inode_no > total_inodes:
-            print("DIRECTORY INODE {} NAME {} INVALID INODE {}".format(parent_no, directory[6], inode_no))
+            print("DIRECTORY INODE {} NAME {} INVALID INODE {}".format(parent_no, name, inode_no))
             exit_code += 1
         elif inode_no in inode_free_list:
-            print("DIRECTORY INODE {} NAME {} UNALLOCATED INODE {}".format(parent_no, directory[6], inode_no))
+            print("DIRECTORY INODE {} NAME {} UNALLOCATED INODE {}".format(parent_no, name, inode_no))
             exit_code += 1
 
-    for directory in directories:
-        parent_no = int(directory[1])
-        inode_no = int(directory[3])
-        name = directory[6]
         if name == "'.'" and parent_no != inode_no:
             print("DIRECTORY INODE {} NAME {} LINK TO INODE {} SHOULD BE {}".format(inode_no, name, parent_no, inode_no))
             exit_code += 1
