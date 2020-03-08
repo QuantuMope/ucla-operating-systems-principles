@@ -2,24 +2,22 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
-lab3a - Program scans and analyzes an EXT2 file system.
-        Outputs information on the superblock, block groups,
-        free block and inode entries, inodes, directories,
-        and indirect block references.
+-------------------------------------------------------------------
+lab3b - Shell script that runs a python program conducting a file
+        system consistency analysis. Processes csv files containing
+        summaries of all the data structures within an EXT2 file system
+        and finds and reports anomalies. Checks include block consistency
+        audits, i-node allocation audits, and directory consistency
+        audits.
 
 -------------------------------------------------------------------
 Included files:
-lab3a.c   - C source module
-ext2_fs.h - header file containing EXT2 data structure definitions
+lab3b.py  - Python source code
 README    - description of all included files
 Makefile  - makefile to build program and tarball, supports
             the following commands:
-            make         - build the lab3a executable
+            make         - build the lab3b shell script that runs the
+                           python source code
             make clean   - remove any files created by the Makefile
-            make dist    - build a tarball lab3a-205348339.tar.gz
+            make dist    - build a tarball lab3b-205348339.tar.gz
                            containing all included files
-
--------------------------------------------------------------------
-References
-Utilized the following EXT2 file system documentation extensively.
-https://www.nongnu.org/ext2-doc/ext2.html

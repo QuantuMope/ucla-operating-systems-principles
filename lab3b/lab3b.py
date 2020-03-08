@@ -1,3 +1,8 @@
+# NAME: Andrew Choi
+# EMAIL: asjchoi@ucla.edu
+# ID: 205348339
+
+
 import sys
 import csv
 from math import ceil
@@ -8,7 +13,7 @@ def separate_lists(entries):
     inodes = []
     inode_free_list = []
     indirects = []
-    directories = []
+    direct_entries = []
     super_block = None
     group_descr = None
     for row in entries:
@@ -22,12 +27,12 @@ def separate_lists(entries):
         elif entry_name == 'INDIRECT':
             indirects.append(row)
         elif entry_name == 'DIRENT':
-            directories.append(row)
+            direct_entries.append(row)
         elif entry_name == 'SUPERBLOCK':
             super_block = row
         elif entry_name == 'GROUP':
             group_descr = row
-    return block_free_list, inodes, inode_free_list, indirects, directories, super_block, group_descr
+    return block_free_list, inodes, inode_free_list, indirects, direct_entries, super_block, group_descr
 
 
 def get_meta_data_blocks(super_block, group):
@@ -39,8 +44,9 @@ def get_meta_data_blocks(super_block, group):
     """
     block_size = int(super_block[3])
     num_inodes = int(super_block[2])
-    inode_table_size = ceil((num_inodes/8)/block_size)
-    meta_data_blocks = [1, 2, int(group[6]), int(group[7])]
+    inode_size = int(super_block[4])
+    inode_table_size = ceil((num_inodes * inode_size)/block_size)
+    meta_data_blocks = [0, 1, 2, int(group[6]), int(group[7])]
     inode_table_block_no = int(group[8])
     # In case the inode block table is longer than one block (which it shouldn't be)
     for i in range(inode_table_block_no, inode_table_block_no + inode_table_size):
@@ -50,18 +56,29 @@ def get_meta_data_blocks(super_block, group):
 
 def check_block_validity(inodes, indirects, free_list, total_blocks, meta_data_blocks):
     exit_code = 0
-    block_reference_count = [0 for _ in range(total_blocks)]
-    for meta_block in meta_data_blocks:
-        block_reference_count[meta_block-1] += 1
+    block_reference_count = {i: [] for i in range(total_blocks)}
 
     for inode in inodes:
         if len(inode) != 27: continue  # for symbolic links with size less than 60
         for i in range(12, 27):
             block_no = int(inode[i])
-            block_string = "BLOCK {} IN INODE {} AT OFFSET {}".format(block_no, inode[1], i - 12)
+            ptr_type = ""
+            offset = i - 12
+            if i == 24:
+                ptr_type = "INDIRECT "
+                offset = 12
+            elif i == 25:
+                ptr_type = "DOUBLE INDIRECT "
+                offset = 268
+            elif i == 26:
+                ptr_type = "TRIPLE INDIRECT "
+                offset = 65804
+            block_string = "{}BLOCK {} IN INODE {} AT OFFSET {}".format(ptr_type, block_no, inode[1], offset)
             if 0 < block_no < total_blocks:
-                block_reference_count[block_no - 1] += 1
-                if block_reference_count[block_no - 1] > 1:
+                block_reference_count[block_no].append(block_string)
+                if len(block_reference_count[block_no]) > 1:
+                    if len(block_reference_count[block_no]) == 2:
+                        print("DUPLICATE " + block_reference_count[block_no][0])
                     print("DUPLICATE " + block_string)
                     exit_code += 1
                 if block_no in free_list:
@@ -71,7 +88,7 @@ def check_block_validity(inodes, indirects, free_list, total_blocks, meta_data_b
             if block_no < 0 or block_no > total_blocks:
                 print("INVALID " + block_string)
                 exit_code += 1
-            elif block_no in meta_data_blocks:
+            elif block_no in meta_data_blocks[1:]:
                 print("RESERVED " + block_string)
                 exit_code += 1
 
@@ -84,8 +101,10 @@ def check_block_validity(inodes, indirects, free_list, total_blocks, meta_data_b
             level = "DOUBLE"
         block_string = "{}INDIRECT BLOCK {} IN INODE {} AT OFFSET {}".format(level, block_no, indirect[1], indirect[3])
         if 0 < block_no < total_blocks:
-            block_reference_count[block_no - 1] += 1
-            if block_reference_count[block_no - 1] > 1:
+            block_reference_count[block_no].append(block_string)
+            if len(block_reference_count[block_no]) > 1:
+                if len(block_reference_count[block_no]) == 2:
+                    print("DUPLICATE " + block_reference_count[block_no][0])
                 print("DUPLICATE " + block_string)
                 exit_code += 1
             if block_no in free_list:
@@ -99,15 +118,17 @@ def check_block_validity(inodes, indirects, free_list, total_blocks, meta_data_b
             print("RESERVED " + block_string)
             exit_code += 1
 
-    for block_no, count in enumerate(block_reference_count):
-        if count == 0 and block_no+1 not in free_list:
-            print("UNREFERENCED BLOCK {}".format(block_no+1))
+    first_block = len(meta_data_blocks)
+    for block_no in range(first_block, total_blocks):
+        count = len(block_reference_count[block_no])
+        if count == 0 and block_no not in free_list:
+            print("UNREFERENCED BLOCK {}".format(block_no))
             exit_code += 1
 
     return exit_code
 
 
-def check_inode_validity(inodes, inode_free_list, total_inodes):
+def check_inode_validity(inodes, inode_free_list, total_inodes, first_inode):
     exit_code = 0
     inode_reference_count = [0 for _ in range(total_inodes)]
     for inode in inodes:
@@ -115,44 +136,48 @@ def check_inode_validity(inodes, inode_free_list, total_inodes):
         inode_reference_count[inode_no-1] += 1
         if inode_no in inode_free_list:
             print("ALLOCATED INODE {} ON FREELIST".format(inode_no))
+            inode_free_list.remove(inode_no)
             exit_code += 1
-    for inode_no, count in enumerate(inode_reference_count):
-        if count == 0 and inode_no+1 not in inode_free_list:
-            print("UNALLOCATED INODE {} NOT ON FREELIST".format(inode_no+1))
+    for inode_no in range(first_inode, total_inodes):
+        count = inode_reference_count[inode_no-1]
+        if count == 0 and inode_no not in inode_free_list:
+            print("UNALLOCATED INODE {} NOT ON FREELIST".format(inode_no))
             exit_code += 1
 
-    return exit_code
+    return exit_code, inode_reference_count
 
 
-def check_directory_validity(inodes, total_inodes, directories, inode_free_list):
+def check_directory_validity(inodes, total_inodes, direct_entries, inode_free_list):
     exit_code = 0
     link_counts = [0 for _ in range(total_inodes)]
-    for directory in directories:
-        link_counts[int(directory[1])-1] += 1
+
+    for direct_entry in direct_entries:
+        direct_ino = int(direct_entry[1])
+        file_ino = int(direct_entry[3])
+        name = direct_entry[6]
+        if file_ino < 1 or file_ino > total_inodes:
+            print("DIRECTORY INODE {} NAME {} INVALID INODE {}".format(direct_ino, name, file_ino))
+            exit_code += 1
+        elif file_ino in inode_free_list:
+            print("DIRECTORY INODE {} NAME {} UNALLOCATED INODE {}".format(direct_ino, name, file_ino))
+            exit_code += 1
+
+        if name == "'.'" and file_ino != direct_ino:
+            print("DIRECTORY INODE {} NAME {} LINK TO INODE {} SHOULD BE {}".format(direct_ino, name, file_ino, direct_ino))
+            exit_code += 1
+        elif name == "'..'" and direct_ino == 2 and file_ino != 2:  # special case due to root
+            print("DIRECTORY INODE 2 NAME '..' LINK TO INODE {} SHOULD BE 2".format(file_ino))
+            exit_code += 1
+
+        if 0 < file_ino < total_inodes:
+            link_counts[file_ino-1] += 1
+
     for inode in inodes:
         inode_no = int(inode[1])
         l_count = int(inode[6])
         links = link_counts[inode_no-1]
-        if inode[2] == 'd' and l_count != links:
+        if l_count != links:
             print("INODE {} HAS {} LINKS BUT LINKCOUNT IS {}".format(inode_no, links, l_count))
-            exit_code += 1
-
-    for directory in directories:
-        parent_no = int(directory[1])
-        inode_no = int(directory[3])
-        name = directory[6]
-        if inode_no < 1 or inode_no > total_inodes:
-            print("DIRECTORY INODE {} NAME {} INVALID INODE {}".format(parent_no, name, inode_no))
-            exit_code += 1
-        elif inode_no in inode_free_list:
-            print("DIRECTORY INODE {} NAME {} UNALLOCATED INODE {}".format(parent_no, name, inode_no))
-            exit_code += 1
-
-        if name == "'.'" and parent_no != inode_no:
-            print("DIRECTORY INODE {} NAME {} LINK TO INODE {} SHOULD BE {}".format(inode_no, name, parent_no, inode_no))
-            exit_code += 1
-        elif name == "'..'" and inode_no == 2 and parent_no != 2:  # special case due to root
-            print("DIRECTORY INODE 2 NAME '..' LINK TO INODE {} SHOULD BE 2".format(parent_no))
             exit_code += 1
 
     return exit_code
@@ -182,15 +207,16 @@ def main():
     file.close()
 
     # Since we know that there is only one group
-    block_free_list, inodes, inode_free_list, indirects, directories, super_block, group_descr = separate_lists(entries)
+    block_free_list, inodes, inode_free_list, indirects, direct_entries, super_block, group_descr = separate_lists(entries)
     meta_data_blocks = get_meta_data_blocks(super_block, group_descr)
 
     total_blocks = int(super_block[1])
     total_inodes = int(super_block[2])
+    first_inode  = int(super_block[7])
 
     exit_codes = [check_block_validity(inodes, indirects, block_free_list, total_blocks, meta_data_blocks),
-                  check_inode_validity(inodes, inode_free_list, total_inodes),
-                  check_directory_validity(inodes, total_inodes, directories, inode_free_list)]
+                  check_inode_validity(inodes, inode_free_list, total_inodes, first_inode),
+                  check_directory_validity(inodes, total_inodes, direct_entries, inode_free_list)]
 
     for code in exit_codes:
         if code != 0:
