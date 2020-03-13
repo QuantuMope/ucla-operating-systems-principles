@@ -2,32 +2,32 @@ NAME: Andrew Choi
 EMAIL: asjchoi@ucla.edu
 ID: 205348339
 
-lab4b - Program connects to an embedded system (Beaglebone) and
-        reads and reports temperature from sensor.
-        Default period and scale is 1 second and Fahrenheit.
+----------------------------------------------------------------------------
+lab4c_tcp - Program connects to an embedded system (Beaglebone) and
+            reads and reports temperature from sensor. Sends sensor
+            readings to a server via TCP. Accepts commands from the
+            server. Logs all given commands.
+lab4c_tls - Same as lab4c_tcp except socket communication uses SSL
+            encryption.
 
-        Accepts the following command line arguments:
-        --scale=[C|F]   change temperature scale to Celsius or Fahrenheit
-        --period=#      change the reporting period (seconds)
-        --log=FILENAME  log reports to provided file
 
-        Also accepts the following commands from standard input while running:
-        SCALE=F | SCALE=C   set temp scale accordingly
-        PERIOD=#            set reporting period
-        START               start reporting
-        STOP                stop reporting (continues to process commands)
-        LOG ""              log message
-        OFF                 shutdown and quit program
+            Both programs accept the following command line arguments:
+            --scale=[C|F]   change temperature scale to Celsius or Fahrenheit
+            --period=#      change the reporting period (seconds)
+            The following are MANDATORY.
+            --log=FILENAME  log reports to provided file
+            --host=NAME     name of the host to connect to
+            --id=9-DIGIT-#  id for server identification purposes
+            A port number must also be provided.
 
--------------------------------------------------------------------
+----------------------------------------------------------------------------
 Included files:
-lab4b.c  - C source module
-README   - description of all included files
-Makefile - makefile to build program and tarball, supports
-           the following commands:
-           make         - build the lab4b executable
-           make clean   - remove any files created by the Makefile
-           make check   - smoke test to check for proper sensor
-                          connection
-           make dist    - build a tarball lab4b-205348339.tar.gz
-                          containing all included files
+lab4c_tcp.c - C source module for TCP client
+lab4c_tls.c - C source module for TLS client
+README      - description of all included files
+Makefile    - makefile to build program and tarball, supports
+              the following commands:
+              make         - build the lab4c_tcp and lab4c_tls executables
+              make clean   - remove any files created by the Makefile
+              make dist    - build a tarball lab4c-205348339.tar.gz
+                             containing all included files

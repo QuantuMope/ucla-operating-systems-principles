@@ -274,15 +274,14 @@ int main(int argc, char** argv) {
                         generate_reports = 1;
                     }
                     else if (strcmp(log_check, "LOG ") == 0) {
-                        ; // Will need for lab4c
+                        ;
                     }
                     else if (strcmp(command_buf, "OFF") == 0) {
                         fprintf(log_file, "OFF\n");
                         turn_off();
                         break;
                     }
-
-                    // Log all commands valid or invalid if enabled
+                    // Log all commands
                     fprintf(log_file, "%s\n", command_buf);
 
                     // Clear and reset command buffer after a \n

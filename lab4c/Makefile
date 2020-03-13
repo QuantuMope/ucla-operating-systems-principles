@@ -4,9 +4,8 @@
 
 .SILENT:
 
-#LIBRARIES = -lmraa -lm
-TCP_LIBRARIES = -lm
-TLS_LIBRARIES = -lm -lssl -lcrypto
+TCP_LIBRARIES = -lmraa -lm
+TLS_LIBRARIES = -lmraa -lm -lssl -lcrypto
 
 default: build
 	
