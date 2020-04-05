@@ -1,7 +1,3 @@
-// NAME: Andrew Choi
-// EMAIL: asjchoi@ucla.edu
-// ID: 205348339
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>

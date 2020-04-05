@@ -1,7 +1,3 @@
-NAME: Andrew Choi
-EMAIL: asjchoi@ucla.edu
-ID: 205348339
-
 lab3a - Program scans and analyzes an EXT2 file system.
         Outputs information on the superblock, block groups,
         free block and inode entries, inodes, directories,

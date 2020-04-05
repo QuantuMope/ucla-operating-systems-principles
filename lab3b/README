@@ -1,8 +1,3 @@
-NAME: Andrew Choi
-EMAIL: asjchoi@ucla.edu
-ID: 205348339
-
--------------------------------------------------------------------
 lab3b - Shell script that runs a python program conducting a file
         system consistency analysis. Processes csv files containing
         summaries of all the data structures within an EXT2 file system

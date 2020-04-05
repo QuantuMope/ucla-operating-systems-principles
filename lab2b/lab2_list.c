@@ -1,7 +1,3 @@
-// NAME: Andrew Choi
-// EMAIL: asjchoi@ucla.edu
-// ID: 205348339
-
 #include "SortedList.h"
 
 #define BIL 1000000000ULL

@@ -1,8 +1,3 @@
-# NAME: Andrew Choi
-# EMAIL: asjchoi@ucla.edu
-# ID: 205348339
-
-
 import sys
 import csv
 from math import ceil
